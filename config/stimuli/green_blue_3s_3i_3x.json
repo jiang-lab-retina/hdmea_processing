@@ -1,0 +1,17 @@
+{
+    "name": "green_blue_3s_3i_3x",
+    "display_name": "Green/Blue Steps (3s on, 3s interval, 3x)",
+    "movie_length_frames": 540,
+    "frame_rate_hz": 30.0,
+    "num_repeats": 3,
+    "sections": {
+        "baseline_1": [0, 90],
+        "green_on": [90, 180],
+        "baseline_2": [180, 270],
+        "blue_on": [270, 360],
+        "baseline_3": [360, 450],
+        "both_on": [450, 540]
+    },
+    "description": "Green and blue light steps for chromatic response characterization."
+}
+

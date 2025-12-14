@@ -1,0 +1,26 @@
+{
+    "pipeline": {
+        "version": "0.1.0",
+        "random_seed": 42,
+        "force_recompute": false,
+        "log_level": "INFO"
+    },
+    "stage1": {
+        "firing_rate_bin_hz": 10,
+        "skip_if_exists": true
+    },
+    "stage2": {
+        "skip_if_exists": true,
+        "parallel_units": false
+    },
+    "export": {
+        "include_metadata": true,
+        "compression": "snappy"
+    },
+    "paths": {
+        "artifacts_dir": "artifacts",
+        "exports_dir": "exports",
+        "config_dir": "config"
+    }
+}
+

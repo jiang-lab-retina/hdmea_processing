@@ -1,0 +1,27 @@
+{
+    "name": "set6a_full",
+    "description": "Full set6a feature extraction workflow - replicates legacy 2025 processing",
+    "version": "1.0.0",
+    "stages": {
+        "load": {
+            "enabled": true
+        },
+        "features": {
+            "enabled": true,
+            "feature_sets": [
+                "baseline_127",
+                "step_up_5s_5i_3x",
+                "green_blue_3s_3i_3x",
+                "freq_step_5st_3x",
+                "moving_h_bar_s5_d8_3x",
+                "perfect_dense_noise_15x15_15hz_r42_3min",
+                "cell_type_classifier"
+            ]
+        }
+    },
+    "defaults": {
+        "random_seed": 42,
+        "force_recompute": false
+    }
+}
+
