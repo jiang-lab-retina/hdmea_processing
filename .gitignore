@@ -2,6 +2,9 @@
 artifacts/
 exports/
 
+# Legacy code (reference only, not part of new pipeline)
+Legacy_code/
+
 # Notebooks scratch area
 notebooks/_scratch/
 
