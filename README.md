@@ -99,3 +99,10 @@ pytest tests/ -v
 
 MIT
 
+
+
+## Commonly used command
+```bash
+python -c "import zarr; print(zarr.open('artifacts/TESTPIPELINE01_2023-12-07.zarr').tree())"
+```
+

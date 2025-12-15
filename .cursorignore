@@ -1,0 +1,3 @@
+# Ignore Jupyter notebook files (use paired .py files instead)
+*.ipynb
+

@@ -86,6 +86,7 @@ def load_recording(
     *,
     output_dir: Union[str, Path] = "artifacts",
     force: bool = False,
+    allow_overwrite: bool = False,
     config: Optional[Dict[str, Any]] = None,
 ) -> LoadResult:
     """
@@ -100,6 +101,7 @@ def load_recording(
         dataset_id: Unique identifier for the recording.
         output_dir: Directory for Zarr output. Default: "artifacts".
         force: If True, overwrite existing Zarr. Default: False.
+        allow_overwrite: If True, allow overwriting existing Zarr even if params differ. Default: False.
         config: Optional configuration dictionary.
     
     Returns:
@@ -112,6 +114,9 @@ def load_recording(
     """
     warnings = []
     config = config or {}
+    
+    # Combine force and allow_overwrite - if either is True, allow overwrite
+    overwrite = force or allow_overwrite
     
     # Validate inputs
     cmcr_path_obj, cmtr_path_obj = validate_input_files(
@@ -135,7 +140,7 @@ def load_recording(
     zarr_path = output_dir / f"{dataset_id}.zarr"
     
     # Check for existing Zarr (caching)
-    if zarr_path.exists() and not force:
+    if zarr_path.exists() and not overwrite:
         root = open_recording_zarr(zarr_path, mode="r")
         status = get_stage1_status(root)
         
@@ -152,8 +157,11 @@ def load_recording(
                     warnings=["Using cached Zarr (skipped loading)"],
                 )
             else:
-                logger.warning("Zarr exists but params differ. Use force=True to overwrite.")
-                warnings.append("Params mismatch with cached Zarr")
+                logger.warning("Zarr exists but params differ. Use force=True or allow_overwrite=True to overwrite.")
+                raise FileExistsError(
+                    f"Zarr already exists with different params: {zarr_path}. "
+                    "Use force=True or allow_overwrite=True to overwrite."
+                )
     
     # Create new Zarr
     logger.info(f"Creating new Zarr: {zarr_path}")
@@ -161,7 +169,7 @@ def load_recording(
         zarr_path,
         dataset_id=dataset_id,
         config=config,
-        overwrite=force,
+        overwrite=overwrite,
     )
     
     units_data = {}

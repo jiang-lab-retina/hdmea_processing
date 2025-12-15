@@ -27,7 +27,9 @@ def load_cmcr_data(cmcr_path: Path) -> Dict[str, Any]:
     
     Returns:
         Dictionary with keys:
-            - light_reference: Dict with different sample rates
+            - light_reference: Dict with six entries:
+                - raw_ch1, 10hz_ch1, 1khz_ch1 (channel 1 at raw/10Hz/1kHz)
+                - raw_ch2, 10hz_ch2, 1khz_ch2 (channel 2 at raw/10Hz/1kHz)
             - metadata: Recording metadata
             - acquisition_rate: Sampling rate in Hz
     
@@ -42,49 +44,104 @@ def load_cmcr_data(cmcr_path: Path) -> Dict[str, Any]:
     
     try:
         # Import McsPy here to allow graceful failure if not installed
-        from McsPy import McsCMOSMEA
+        from McsPy.McsCMOSMEA import McsCMOSMEAData
         
-        cmcr_data = McsCMOSMEA.McsCMOSMEAData(str(cmcr_path))
+        cmcr_data = McsCMOSMEAData(str(cmcr_path))
         
         light_reference = {}
         metadata = {}
         
-        # Extract recording info
-        if hasattr(cmcr_data, "recording_info"):
-            metadata["recording_info"] = cmcr_data.recording_info
-        
-        # Get acquisition rate
-        acquisition_rate = 20000.0  # Default 20kHz
-        if hasattr(cmcr_data, "acquisition_rate"):
-            acquisition_rate = cmcr_data.acquisition_rate
-        
-        # Extract light reference (auxiliary channel)
-        # Light reference is typically in an auxiliary stream
-        if hasattr(cmcr_data, "auxiliary_source") and cmcr_data.auxiliary_source is not None:
-            aux_source = cmcr_data.auxiliary_source
-            
-            # Get the light reference channel
-            if hasattr(aux_source, "get_data"):
+        # Extract file attributes as metadata
+        if hasattr(cmcr_data, "attrs"):
+            for key in cmcr_data.attrs.keys():
                 try:
-                    light_data = aux_source.get_data()
-                    if light_data is not None and len(light_data) > 0:
-                        light_reference["20kHz"] = light_data.astype(np.float32)
-                        
-                        # Create downsampled versions
-                        light_reference["10Hz"] = _downsample_light_reference(
-                            light_data, acquisition_rate, target_rate=10
-                        )
-                        light_reference["1kHz"] = _downsample_light_reference(
-                            light_data, acquisition_rate, target_rate=1000
-                        )
-                        
-                        logger.info(f"Loaded light reference: {len(light_data)} samples")
-                except Exception as e:
-                    logger.warning(f"Could not extract light reference: {e}")
+                    val = cmcr_data.attrs[key]
+                    # Decode bytes to string
+                    if isinstance(val, bytes):
+                        metadata[key] = val.decode('utf-8', errors='ignore')
+                    elif hasattr(val, '__len__') and len(val) == 1:
+                        metadata[key] = val[0]
+                    else:
+                        metadata[key] = val
+                except Exception:
+                    pass
         
-        # Get recording duration
-        if hasattr(cmcr_data, "duration"):
-            metadata["recording_duration_s"] = cmcr_data.duration / 1e6  # Convert from μs
+        # Get recording duration from attributes (in microseconds)
+        recording_duration_us = metadata.get("LB.RecordingDuration", 0)
+        if recording_duration_us > 0:
+            metadata["recording_duration_s"] = recording_duration_us / 1e6
+        
+        # Default acquisition rate (20 kHz typical for MaxOne/MaxTwo)
+        acquisition_rate = 20000.0
+        
+        # Extract light reference from Analog_Data
+        # Light reference is typically stored in Acquisition.Analog_Data
+        if hasattr(cmcr_data, "Acquisition") and cmcr_data.Acquisition is not None:
+            acq = cmcr_data.Acquisition
+            
+            if hasattr(acq, "Analog_Data") and acq.Analog_Data is not None:
+                analog_data = acq.Analog_Data
+                
+                # Try to get ChannelData_1 which contains analog channels
+                if hasattr(analog_data, "ChannelData_1"):
+                    try:
+                        channel_data = analog_data.ChannelData_1[:]
+                        
+                        # channel_data shape is typically (num_channels, num_samples)
+                        if channel_data is not None and len(channel_data) > 0:
+                            # Use first channel as light reference
+                            if channel_data.ndim == 2:
+                                light_data = channel_data[0].astype(np.float32)
+                            else:
+                                light_data = channel_data.astype(np.float32)
+                            
+                            # Estimate acquisition rate from data and duration
+                            if recording_duration_us > 0:
+                                acquisition_rate = len(light_data) / (recording_duration_us / 1e6)
+                                logger.info(f"Estimated acquisition rate: {acquisition_rate:.0f} Hz")
+                            
+                            # Store channel 1 at all sample rates
+                            light_reference["raw_ch1"] = light_data
+                            light_reference["10hz_ch1"] = _downsample_light_reference(
+                                light_data, acquisition_rate, target_rate=10
+                            )
+                            light_reference["1khz_ch1"] = _downsample_light_reference(
+                                light_data, acquisition_rate, target_rate=1000
+                            )
+                            
+                            logger.info(f"Loaded light reference ch1: {len(light_data)} samples from Analog_Data")
+                            
+                            # Store channel 2 at all sample rates if available
+                            if channel_data.ndim == 2 and channel_data.shape[0] > 1:
+                                light_data_ch2 = channel_data[1].astype(np.float32)
+                                light_reference["raw_ch2"] = light_data_ch2
+                                light_reference["10hz_ch2"] = _downsample_light_reference(
+                                    light_data_ch2, acquisition_rate, target_rate=10
+                                )
+                                light_reference["1khz_ch2"] = _downsample_light_reference(
+                                    light_data_ch2, acquisition_rate, target_rate=1000
+                                )
+                                logger.info(f"Loaded light reference ch2: {len(light_data_ch2)} samples")
+                                
+                    except Exception as e:
+                        logger.warning(f"Could not extract light reference from ChannelData_1: {e}")
+                
+                # Also check for Data attribute
+                elif hasattr(analog_data, "Data"):
+                    try:
+                        # Data might be a McsStreamList
+                        data_list = analog_data.Data
+                        if hasattr(data_list, '__iter__'):
+                            for i, data_item in enumerate(data_list):
+                                if hasattr(data_item, 'shape'):
+                                    light_data = data_item[:].astype(np.float32)
+                                    light_reference[f"channel_{i}"] = light_data
+                                    logger.info(f"Loaded light reference channel {i}: {len(light_data)} samples")
+                    except Exception as e:
+                        logger.warning(f"Could not extract light reference from Data: {e}")
+        
+        if not light_reference:
+            logger.warning("No light reference data found in CMCR file")
         
         return {
             "light_reference": light_reference,
@@ -95,7 +152,7 @@ def load_cmcr_data(cmcr_path: Path) -> Dict[str, Any]:
         
     except ImportError:
         raise DataLoadError(
-            "McsPy library not available. Install it to read CMCR files.",
+            "McsPy library not available. Install with: pip install McsPyDataTools",
             file_path=str(cmcr_path),
         )
     except Exception as e:

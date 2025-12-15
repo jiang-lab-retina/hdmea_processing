@@ -6,6 +6,8 @@ Handles reading and writing of Zarr archives that store recording data and featu
 
 import json
 import logging
+import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -45,9 +47,26 @@ def create_recording_zarr(
     
     logger.info(f"Creating Zarr archive: {zarr_path}")
     
-    # Create store
-    store = zarr.DirectoryStore(str(zarr_path))
-    root = zarr.group(store=store, overwrite=overwrite)
+    # Create Zarr group - pass path string directly (works in zarr v2 and v3)
+    # zarr v3: DirectoryStore moved to zarr.storage.LocalStore, but path string works
+    # zarr v2: DirectoryStore available, but path string also works
+    if overwrite and zarr_path.exists():
+        # On Windows, file handles may not be released immediately
+        # Retry deletion with small delays to handle file locking
+        for attempt in range(3):
+            try:
+                shutil.rmtree(zarr_path)
+                # Give Windows time to release file handles
+                time.sleep(0.2)
+                break
+            except PermissionError:
+                if attempt < 2:
+                    logger.warning(f"Retrying deletion of {zarr_path} (attempt {attempt + 1})")
+                    time.sleep(0.5)
+                else:
+                    raise
+    
+    root = zarr.open(str(zarr_path), mode='w')
     
     # Set root metadata
     now = datetime.now(timezone.utc).isoformat()
@@ -87,8 +106,8 @@ def open_recording_zarr(
     if not zarr_path.exists():
         raise FileNotFoundError(f"Zarr not found: {zarr_path}")
     
-    store = zarr.DirectoryStore(str(zarr_path))
-    return zarr.open_group(store=store, mode=mode)
+    # Open Zarr group - pass path string directly (works in zarr v2 and v3)
+    return zarr.open(str(zarr_path), mode=mode)
 
 
 def write_units(
@@ -113,27 +132,33 @@ def write_units(
         # Write spike times (in microseconds)
         spike_times = unit_info.get("spike_times", np.array([]))
         if len(spike_times) > 0:
+            spike_arr = spike_times.astype(np.uint64)
             unit_group.create_dataset(
                 "spike_times",
-                data=spike_times.astype(np.uint64),
+                data=spike_arr,
+                shape=spike_arr.shape,
                 dtype=np.uint64,
             )
         
         # Write waveform
         waveform = unit_info.get("waveform", np.array([]))
         if len(waveform) > 0:
+            waveform_arr = waveform.astype(np.float32)
             unit_group.create_dataset(
                 "waveform",
-                data=waveform.astype(np.float32),
+                data=waveform_arr,
+                shape=waveform_arr.shape,
                 dtype=np.float32,
             )
         
         # Write firing rate if available
         firing_rate = unit_info.get("firing_rate_10hz")
         if firing_rate is not None and len(firing_rate) > 0:
+            fr_arr = firing_rate.astype(np.float32)
             unit_group.create_dataset(
                 "firing_rate_10hz",
-                data=firing_rate.astype(np.float32),
+                data=fr_arr,
+                shape=fr_arr.shape,
                 dtype=np.float32,
             )
         
@@ -171,9 +196,11 @@ def write_stimulus(
         lr_group = stimulus_group.create_group("light_reference", overwrite=True)
         for rate_name, data in light_reference.items():
             if data is not None and len(data) > 0:
+                data_arr = data.astype(np.float32)
                 lr_group.create_dataset(
                     rate_name,
-                    data=data.astype(np.float32),
+                    data=data_arr,
+                    shape=data_arr.shape,
                     dtype=np.float32,
                 )
         logger.info(f"Wrote light reference: {list(light_reference.keys())}")
@@ -183,9 +210,11 @@ def write_stimulus(
         ft_group = stimulus_group.create_group("frame_time", overwrite=True)
         for movie_name, times in frame_times.items():
             if times is not None and len(times) > 0:
+                times_arr = times.astype(np.uint64)
                 ft_group.create_dataset(
                     movie_name,
-                    data=times.astype(np.uint64),
+                    data=times_arr,
+                    shape=times_arr.shape,
                     dtype=np.uint64,
                 )
     
@@ -194,9 +223,11 @@ def write_stimulus(
         st_group = stimulus_group.create_group("section_time", overwrite=True)
         for section_name, times in section_times.items():
             if times is not None:
+                times_arr = np.array(times, dtype=np.uint64)
                 st_group.create_dataset(
                     section_name,
-                    data=np.array(times, dtype=np.uint64),
+                    data=times_arr,
+                    shape=times_arr.shape,
                     dtype=np.uint64,
                 )
 
@@ -214,20 +245,30 @@ def write_metadata(
     """
     metadata_group = root["metadata"]
     
-    # Write scalar metadata as datasets
+    # Write metadata - use attributes for scalars (zarr v3 has issues with 0-dim arrays)
     for key, value in metadata.items():
         if isinstance(value, (int, float)):
-            metadata_group.create_dataset(
-                key,
-                data=np.array(value),
-                overwrite=True,
-            )
+            # Store scalars as attributes (avoids zarr v3 scalar array issues)
+            metadata_group.attrs[key] = value
         elif isinstance(value, str):
             # Store strings as attributes
             metadata_group.attrs[key] = value
         elif isinstance(value, dict):
             # Store dicts as JSON attributes
             metadata_group.attrs[key] = json.dumps(value)
+        elif isinstance(value, np.ndarray):
+            # Handle numpy arrays - only create datasets for non-scalar arrays
+            if value.ndim > 0:
+                metadata_group.create_dataset(
+                    key,
+                    data=value,
+                    shape=value.shape,
+                    dtype=value.dtype,
+                    overwrite=True,
+                )
+            else:
+                # Scalar numpy array -> store as attribute
+                metadata_group.attrs[key] = value.item()
     
     logger.debug(f"Wrote metadata: {list(metadata.keys())}")
 
@@ -314,20 +355,47 @@ def write_feature_to_unit(
     # Write feature data
     for key, value in feature_data.items():
         if isinstance(value, np.ndarray):
-            feature_group.create_dataset(key, data=value)
+            # Only create dataset for non-scalar arrays (zarr v3 has issues with 0-dim)
+            if value.ndim > 0:
+                feature_group.create_dataset(
+                    key,
+                    data=value,
+                    shape=value.shape,
+                    dtype=value.dtype,
+                )
+            else:
+                # Scalar numpy array -> store as attribute
+                feature_group.attrs[key] = value.item()
         elif isinstance(value, (list, tuple)):
-            feature_group.create_dataset(key, data=np.array(value))
+            arr = np.array(value)
+            if arr.ndim > 0:
+                feature_group.create_dataset(
+                    key,
+                    data=arr,
+                    shape=arr.shape,
+                    dtype=arr.dtype,
+                )
+            else:
+                feature_group.attrs[key] = arr.item()
         elif isinstance(value, dict):
             # Nested dict -> create subgroup
             subgroup = feature_group.create_group(key)
             for subkey, subvalue in value.items():
-                if isinstance(subvalue, np.ndarray):
-                    subgroup.create_dataset(subkey, data=subvalue)
+                if isinstance(subvalue, np.ndarray) and subvalue.ndim > 0:
+                    subgroup.create_dataset(
+                        subkey,
+                        data=subvalue,
+                        shape=subvalue.shape,
+                        dtype=subvalue.dtype,
+                    )
+                elif isinstance(subvalue, np.ndarray):
+                    # Scalar numpy array
+                    subgroup.attrs[subkey] = subvalue.item()
                 else:
                     subgroup.attrs[subkey] = subvalue
         else:
-            # Scalar values as datasets
-            feature_group.create_dataset(key, data=np.array(value))
+            # Scalar values -> store as attributes (zarr v3 has issues with 0-dim arrays)
+            feature_group.attrs[key] = value
     
     # Set feature metadata
     feature_group.attrs.update(metadata)

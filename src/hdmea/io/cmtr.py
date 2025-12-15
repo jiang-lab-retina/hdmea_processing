@@ -6,7 +6,7 @@ CMTR files contain spike-sorted data from HD-MEA recordings.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import numpy as np
 
@@ -40,39 +40,69 @@ def load_cmtr_data(cmtr_path: Path) -> Dict[str, Any]:
     
     try:
         # Import McsPy here to allow graceful failure if not installed
-        from McsPy import McsCMOSMEA
+        from McsPy.McsCMOSMEA import McsCMOSMEAData
         
-        cmtr_data = McsCMOSMEA.McsCMOSSpikeStream(str(cmtr_path))
+        # Use McsCMOSMEAData class for CMTR files
+        cmtr_data = McsCMOSMEAData(str(cmtr_path))
         
         units = {}
         metadata = {}
         
-        # Extract recording info
-        if hasattr(cmtr_data, "recording_info"):
-            metadata["recording_info"] = cmtr_data.recording_info
+        # Extract file attributes
+        if hasattr(cmtr_data, "attrs"):
+            for key in cmtr_data.attrs.keys():
+                try:
+                    metadata[key] = cmtr_data.attrs[key]
+                except Exception:
+                    pass
         
-        # Get the high-pass stream (contains spike data)
-        if hasattr(cmtr_data, "high_pass_source") and cmtr_data.high_pass_source is not None:
-            hp_source = cmtr_data.high_pass_source
+        # Access spike sorter results
+        if hasattr(cmtr_data, "Spike_Sorter") and cmtr_data.Spike_Sorter is not None:
+            spike_sorter = cmtr_data.Spike_Sorter
             
-            # Get units data
-            if hasattr(hp_source, "units") and hp_source.units is not None:
-                units_data = hp_source.units
-                
-                for unit_num in range(len(units_data)):
-                    unit = units_data[unit_num]
+            # Find all Unit_X attributes
+            unit_attrs = [attr for attr in dir(spike_sorter) 
+                         if attr.startswith("Unit_") and not attr == "Unit_Info"]
+            
+            logger.info(f"Found {len(unit_attrs)} units in Spike_Sorter")
+            
+            for unit_num, unit_attr in enumerate(sorted(unit_attrs)):
+                try:
+                    # Get unit object (can use getattr or get_unit method)
+                    unit = getattr(spike_sorter, unit_attr)
                     unit_id = f"unit_{unit_num:03d}"
                     
-                    # Extract spike times (convert to microseconds)
-                    spike_times = unit.get_spike_times() if hasattr(unit, "get_spike_times") else np.array([])
+                    # Get spike timestamps using get_peaks_timestamps()
+                    spike_times = np.array([], dtype=np.uint64)
+                    if hasattr(unit, "get_peaks_timestamps"):
+                        timestamps = unit.get_peaks_timestamps()
+                        if timestamps is not None and len(timestamps) > 0:
+                            spike_times = np.array(timestamps, dtype=np.uint64)
                     
-                    # Extract waveform (mean cutout)
-                    waveform = unit.get_mean_cutout() if hasattr(unit, "get_mean_cutout") else np.array([])
+                    # Get waveform cutouts using get_peaks_cutouts()
+                    waveform = np.array([], dtype=np.float32)
+                    if hasattr(unit, "get_peaks_cutouts"):
+                        try:
+                            cutouts = unit.get_peaks_cutouts()
+                            if cutouts is not None and len(cutouts) > 0:
+                                # Average all cutouts to get mean waveform
+                                waveform = np.mean(cutouts, axis=0).astype(np.float32)
+                        except Exception as e:
+                            logger.debug(f"Could not get cutouts for {unit_attr}: {e}")
                     
-                    # Extract location info
-                    row = getattr(unit, "row", 0)
-                    col = getattr(unit, "column", 0)
-                    global_id = getattr(unit, "global_id", unit_num)
+                    # Try to get source/position info
+                    row, col, global_id = 0, 0, unit_num
+                    if hasattr(unit, "Source"):
+                        try:
+                            source = unit.Source[:]
+                            if len(source) > 0:
+                                # Source typically contains sensor ID
+                                global_id = int(source[0]) if source[0] else unit_num
+                                # Compute row/col from sensor ID (MaxOne/MaxTwo layout)
+                                row = global_id // 220
+                                col = global_id % 220
+                        except Exception:
+                            pass
                     
                     units[unit_id] = {
                         "spike_times": spike_times,
@@ -81,9 +111,18 @@ def load_cmtr_data(cmtr_path: Path) -> Dict[str, Any]:
                         "col": col,
                         "global_id": global_id,
                         "unit_num": unit_num,
+                        "original_name": unit_attr,
                     }
                     
-                logger.info(f"Loaded {len(units)} units from CMTR")
+                    logger.debug(f"Loaded {unit_attr}: {len(spike_times)} spikes")
+                    
+                except Exception as e:
+                    logger.warning(f"Could not load unit {unit_attr}: {e}")
+            
+            logger.info(f"Loaded {len(units)} units from CMTR (Spike_Sorter API)")
+        
+        if not units:
+            logger.warning("No units found in CMTR file - file may be empty or have different structure")
         
         return {
             "units": units,
@@ -93,7 +132,7 @@ def load_cmtr_data(cmtr_path: Path) -> Dict[str, Any]:
         
     except ImportError:
         raise DataLoadError(
-            "McsPy library not available. Install it to read CMTR files.",
+            "McsPy library not available. Install with: pip install McsPyDataTools",
             file_path=str(cmtr_path),
         )
     except Exception as e:
@@ -116,11 +155,14 @@ def get_cmtr_recording_id(cmtr_path: Path) -> Optional[str]:
         Recording ID if available, None otherwise
     """
     try:
-        from McsPy import McsCMOSMEA
-        cmtr_data = McsCMOSMEA.McsCMOSSpikeStream(str(cmtr_path))
+        from McsPy.McsCMOSMEA import McsCMOSMEAData
+        cmtr_data = McsCMOSMEAData(str(cmtr_path))
         
-        if hasattr(cmtr_data, "recording_info"):
-            return cmtr_data.recording_info.get("recording_id")
+        if hasattr(cmtr_data, "attrs"):
+            if "recording_id" in cmtr_data.attrs:
+                return cmtr_data.attrs["recording_id"]
+            if "RecordingID" in cmtr_data.attrs:
+                return cmtr_data.attrs["RecordingID"]
         return None
         
     except Exception:
