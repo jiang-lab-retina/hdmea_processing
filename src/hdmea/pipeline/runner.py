@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+import numpy as np
+
 from hdmea.io.cmcr import load_cmcr_data
 from hdmea.io.cmtr import load_cmtr_data, validate_cmcr_cmtr_match
 from hdmea.io.zarr_store import (
@@ -40,6 +42,116 @@ from hdmea.utils.validation import (
 
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+DEFAULT_ACQUISITION_RATE: float = 20000.0  # Hz - typical for MaxOne/MaxTwo
+MIN_TYPICAL_ACQUISITION_RATE: float = 1000.0  # Hz - warn if below
+MAX_TYPICAL_ACQUISITION_RATE: float = 100000.0  # Hz - warn if above
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def validate_acquisition_rate(rate: Optional[float]) -> bool:
+    """
+    Validate that acquisition_rate is acceptable.
+    
+    Args:
+        rate: Proposed acquisition rate in Hz (or None)
+    
+    Returns:
+        True if rate is valid (> 0), False otherwise.
+        
+    Note:
+        Logs a warning if rate is outside typical range (1000-100000 Hz)
+        but still returns True (value is usable, just unusual).
+    """
+    if rate is None:
+        return False
+    
+    if rate <= 0:
+        logger.warning(f"Invalid acquisition_rate: {rate} Hz (must be > 0)")
+        return False
+    
+    # Warn if outside typical range, but accept the value
+    if rate < MIN_TYPICAL_ACQUISITION_RATE or rate > MAX_TYPICAL_ACQUISITION_RATE:
+        logger.warning(
+            f"Unusual acquisition_rate: {rate:.0f} Hz "
+            f"(typical range: {MIN_TYPICAL_ACQUISITION_RATE:.0f}-{MAX_TYPICAL_ACQUISITION_RATE:.0f} Hz)"
+        )
+    
+    return True
+
+
+def compute_frame_time(acquisition_rate: float) -> float:
+    """
+    Compute frame_time from acquisition_rate.
+    
+    Args:
+        acquisition_rate: Sampling rate in Hz (must be > 0)
+    
+    Returns:
+        Frame time in seconds (1 / acquisition_rate)
+    
+    Raises:
+        ValueError: If acquisition_rate <= 0
+    """
+    if acquisition_rate <= 0:
+        raise ValueError(f"acquisition_rate must be > 0, got {acquisition_rate}")
+    return 1.0 / acquisition_rate
+
+
+def get_frame_timestamps(
+    light_reference: np.ndarray,
+    frame_channel: int = 1,
+    exclude_initial_frames: int = 4,
+    normalize_percentile: float = 99.9,
+    peak_height_threshold: float = 0.1,
+) -> np.ndarray:
+    """
+    Detect frame timestamps from light reference signal.
+    
+    Finds frame boundaries by detecting peaks in the derivative of the
+    normalized light reference signal. This matches the legacy approach
+    from jianglab.common_functions.get_frame_timestamp().
+    
+    Args:
+        light_reference: Light reference data array (raw samples).
+        frame_channel: Which channel to use (0 or 1). Default: 1.
+        exclude_initial_frames: Number of initial frame peaks to exclude
+            (often noisy). Default: 4.
+        normalize_percentile: Percentile for normalization. Default: 99.9.
+        peak_height_threshold: Minimum height for peak detection in
+            derivative. Default: 0.1.
+    
+    Returns:
+        Array of frame timestamps (sample indices where frames start).
+    """
+    from scipy.signal import find_peaks
+    
+    # Normalize the signal
+    percentile_val = np.percentile(light_reference, normalize_percentile)
+    if percentile_val > 0:
+        norm_signal = light_reference / percentile_val
+    else:
+        norm_signal = light_reference
+    
+    # Find peaks in the derivative (frame transitions)
+    diff_signal = np.diff(norm_signal)
+    peaks, _ = find_peaks(diff_signal, height=peak_height_threshold)
+    
+    # Exclude initial frames
+    if exclude_initial_frames > 0 and len(peaks) > exclude_initial_frames:
+        peaks = peaks[exclude_initial_frames:]
+    
+    logger.info(f"Detected {len(peaks)} frame timestamps from light reference")
+    
+    return peaks.astype(np.uint64)
 
 
 # =============================================================================
@@ -95,6 +207,19 @@ def load_recording(
     This is Stage 1 of the pipeline. Produces exactly ONE Zarr archive
     per recording containing all data needed for feature extraction.
     
+    Timing Metadata:
+        The function extracts timing parameters using a priority chain:
+        
+        1. CMCR file (primary): Extracts acquisition_rate from file metadata
+           or estimates from data length and recording duration.
+        2. CMTR file (fallback): Extracts acquisition_rate from file attributes
+           if CMCR is unavailable or doesn't provide valid rate.
+        3. Default (last resort): Uses 20000 Hz if neither source provides
+           valid rate, and logs a warning.
+        
+        The frame_time (seconds per sample) is computed as 1/acquisition_rate.
+        Both values are stored in the Zarr metadata group.
+    
     Args:
         cmcr_path: External path to .cmcr file (raw sensor data).
         cmtr_path: External path to .cmtr file (spike-sorted data).
@@ -111,6 +236,18 @@ def load_recording(
         ConfigurationError: If neither cmcr_path nor cmtr_path provided.
         FileNotFoundError: If specified file(s) do not exist.
         DataLoadError: If files cannot be read.
+    
+    Example:
+        >>> result = load_recording(
+        ...     cmcr_path="path/to/recording.cmcr",
+        ...     cmtr_path="path/to/recording.cmtr",
+        ...     dataset_id="REC_2023-12-07",
+        ... )
+        >>> # Access timing metadata from the created Zarr:
+        >>> import zarr
+        >>> root = zarr.open(str(result.zarr_path), mode="r")
+        >>> acquisition_rate = root["metadata"].attrs["acquisition_rate"]  # Hz
+        >>> frame_time = root["metadata"].attrs["frame_time"]  # seconds
     """
     warnings = []
     config = config or {}
@@ -176,12 +313,18 @@ def load_recording(
     light_reference = {}
     metadata = {"dataset_id": dataset_id}
     
+    # Track acquisition_rate sources for priority chain
+    cmcr_acquisition_rate = None
+    cmtr_acquisition_rate = None
+    
     # Load CMTR data (spike-sorted)
     if cmtr_path_obj:
         try:
             cmtr_result = load_cmtr_data(cmtr_path_obj)
             units_data = cmtr_result["units"]
             metadata.update(cmtr_result.get("metadata", {}))
+            # Extract CMTR acquisition_rate as fallback
+            cmtr_acquisition_rate = cmtr_result.get("acquisition_rate")
         except Exception as e:
             logger.error(f"Failed to load CMTR: {e}")
             warnings.append(f"CMTR load failed: {e}")
@@ -193,13 +336,70 @@ def load_recording(
         try:
             cmcr_result = load_cmcr_data(cmcr_path_obj)
             light_reference = cmcr_result.get("light_reference", {})
-            metadata["acquisition_rate"] = cmcr_result.get("acquisition_rate", 20000)
+            # Extract CMCR acquisition_rate as primary source
+            cmcr_acquisition_rate = cmcr_result.get("acquisition_rate")
             metadata.update(cmcr_result.get("metadata", {}))
         except Exception as e:
             logger.error(f"Failed to load CMCR: {e}")
             warnings.append(f"CMCR load failed: {e}")
     else:
         warnings.append("No CMCR file provided - light reference unavailable")
+    
+    # Determine acquisition_rate using priority chain: CMCR -> CMTR -> default
+    acquisition_rate = None
+    acquisition_rate_source = None
+    
+    # Try CMCR first (primary)
+    if validate_acquisition_rate(cmcr_acquisition_rate):
+        acquisition_rate = cmcr_acquisition_rate
+        acquisition_rate_source = "CMCR"
+    # Try CMTR as fallback
+    elif validate_acquisition_rate(cmtr_acquisition_rate):
+        acquisition_rate = cmtr_acquisition_rate
+        acquisition_rate_source = "CMTR"
+    # Use default as last resort
+    else:
+        acquisition_rate = DEFAULT_ACQUISITION_RATE
+        acquisition_rate_source = "default"
+        logger.warning(
+            f"Using default acquisition_rate ({DEFAULT_ACQUISITION_RATE:.0f} Hz) - "
+            "could not extract from CMCR or CMTR"
+        )
+        warnings.append(f"Using default acquisition_rate: {DEFAULT_ACQUISITION_RATE:.0f} Hz")
+    
+    logger.info(f"acquisition_rate: {acquisition_rate:.0f} Hz (source: {acquisition_rate_source})")
+    
+    # Compute frame_time from acquisition_rate
+    sample_interval = compute_frame_time(acquisition_rate)
+    logger.debug(f"sample_interval: {sample_interval:.6e} seconds")
+    
+    # Detect frame timestamps from light reference signal
+    # Following legacy approach from jianglab.common_functions.get_frame_timestamp()
+    frame_timestamps = None
+    if light_reference:
+        # Prefer raw_ch2 (frame channel 1 in legacy = index 1 = channel 2)
+        frame_channel_data = light_reference.get("raw_ch2")
+        if frame_channel_data is None:
+            frame_channel_data = light_reference.get("raw_ch1")
+        if frame_channel_data is not None and len(frame_channel_data) > 0:
+            try:
+                frame_timestamps = get_frame_timestamps(
+                    frame_channel_data,
+                    exclude_initial_frames=4,
+                    normalize_percentile=99.9,
+                    peak_height_threshold=0.1,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to detect frame timestamps: {e}")
+                warnings.append(f"Frame timestamp detection failed: {e}")
+    
+    # Add timing metadata
+    metadata["acquisition_rate"] = acquisition_rate
+    metadata["sample_interval"] = sample_interval  # per-sample time (1/acquisition_rate)
+    if frame_timestamps is not None:
+        metadata["frame_timestamps"] = frame_timestamps  # Array of sample indices
+        # Compute frame_time as array of timestamps in seconds
+        metadata["frame_time"] = (frame_timestamps / acquisition_rate).astype(np.float64)
     
     # Compute firing rates for each unit
     for unit_id, unit_info in units_data.items():
@@ -216,7 +416,13 @@ def load_recording(
     
     # Write to Zarr
     write_units(root, units_data)
-    write_stimulus(root, light_reference)
+    
+    # Prepare frame_times for write_stimulus
+    frame_times_dict = None
+    if frame_timestamps is not None:
+        frame_times_dict = {"default": frame_timestamps}
+    
+    write_stimulus(root, light_reference, frame_times=frame_times_dict)
     write_metadata(root, metadata)
     write_source_files(root, cmcr_path_obj, cmtr_path_obj)
     
@@ -328,6 +534,7 @@ def extract_features(
             
             # Extract for each unit
             stimulus_data = root["stimulus"]
+            recording_metadata = root["metadata"] if "metadata" in root else None
             
             for unit_id in unit_ids:
                 unit_data = root["units"][unit_id]
@@ -340,11 +547,13 @@ def extract_features(
                 # Extract
                 try:
                     result = extractor.extract(
-                        unit_data, stimulus_data, config=config_overrides
+                        unit_data, stimulus_data, 
+                        config=config_overrides,
+                        metadata=recording_metadata
                     )
                     
                     # Write to Zarr
-                    metadata = {
+                    feature_metadata = {
                         "feature_name": feature_name,
                         "extractor_version": extractor.version,
                         "params_hash": hash_config(config_overrides or {}),
@@ -352,7 +561,7 @@ def extract_features(
                     }
                     
                     write_feature_to_unit(
-                        root, unit_id, feature_name, result, metadata
+                        root, unit_id, feature_name, result, feature_metadata
                     )
                     
                 except Exception as e:
@@ -385,4 +594,3 @@ def extract_features(
         features_failed=failed,
         warnings=warnings,
     )
-

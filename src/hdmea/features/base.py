@@ -65,6 +65,7 @@ class FeatureExtractor(ABC):
         unit_data: zarr.Group,
         stimulus_data: zarr.Group,
         config: Optional[Dict[str, Any]] = None,
+        metadata: Optional[zarr.Group] = None,
     ) -> Dict[str, Any]:
         """
         Extract features for a single unit.
@@ -73,6 +74,7 @@ class FeatureExtractor(ABC):
             unit_data: Zarr group for the unit (contains spike_times, waveform, etc.)
             stimulus_data: Zarr group with stimulus information
             config: Optional runtime configuration overrides
+            metadata: Optional Zarr group with recording metadata (acquisition_rate, etc.)
         
         Returns:
             Dictionary mapping feature names to values (scalars or arrays)

@@ -239,25 +239,49 @@ def write_metadata(
     """
     Write recording metadata to Zarr.
     
+    All metadata values are stored as datasets (arrays) in the metadata group,
+    making them visible in the zarr tree structure.
+    
     Args:
         root: Root Zarr group
         metadata: Metadata dictionary
     """
     metadata_group = root["metadata"]
     
-    # Write metadata - use attributes for scalars (zarr v3 has issues with 0-dim arrays)
+    # Write metadata as datasets (visible in .tree())
     for key, value in metadata.items():
         if isinstance(value, (int, float)):
-            # Store scalars as attributes (avoids zarr v3 scalar array issues)
-            metadata_group.attrs[key] = value
+            # Store scalars as 1-element arrays (visible in tree)
+            arr = np.array([value])
+            metadata_group.create_dataset(
+                key,
+                data=arr,
+                shape=arr.shape,
+                dtype=arr.dtype,
+                overwrite=True,
+            )
         elif isinstance(value, str):
-            # Store strings as attributes
-            metadata_group.attrs[key] = value
+            # Store strings as 1-element object arrays
+            arr = np.array([value], dtype=object)
+            metadata_group.create_dataset(
+                key,
+                data=arr,
+                shape=arr.shape,
+                dtype=str,
+                overwrite=True,
+            )
         elif isinstance(value, dict):
-            # Store dicts as JSON attributes
-            metadata_group.attrs[key] = json.dumps(value)
+            # Store dicts as JSON string in 1-element array
+            arr = np.array([json.dumps(value)], dtype=object)
+            metadata_group.create_dataset(
+                key,
+                data=arr,
+                shape=arr.shape,
+                dtype=str,
+                overwrite=True,
+            )
         elif isinstance(value, np.ndarray):
-            # Handle numpy arrays - only create datasets for non-scalar arrays
+            # Handle numpy arrays directly
             if value.ndim > 0:
                 metadata_group.create_dataset(
                     key,
@@ -267,8 +291,15 @@ def write_metadata(
                     overwrite=True,
                 )
             else:
-                # Scalar numpy array -> store as attribute
-                metadata_group.attrs[key] = value.item()
+                # Scalar numpy array -> wrap in 1-element array
+                arr = np.array([value.item()])
+                metadata_group.create_dataset(
+                    key,
+                    data=arr,
+                    shape=arr.shape,
+                    dtype=arr.dtype,
+                    overwrite=True,
+                )
     
     logger.debug(f"Wrote metadata: {list(metadata.keys())}")
 

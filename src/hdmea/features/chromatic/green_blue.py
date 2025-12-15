@@ -46,6 +46,7 @@ class ChromaticFeatureExtractor(FeatureExtractor):
         unit_data: zarr.Group,
         stimulus_data: zarr.Group,
         config: Optional[Dict[str, Any]] = None,
+        metadata: Optional[zarr.Group] = None,
     ) -> Dict[str, Any]:
         """Extract chromatic features."""
         config = config or {}

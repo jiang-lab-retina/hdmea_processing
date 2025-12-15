@@ -524,7 +524,8 @@ def render_main_area() -> None:
         return
 
     if not node.is_array:
-        st.info(f"Selected: {node.display_name} (group - select an array to plot)")
+        # Display group info and attributes
+        render_group_view(node)
         return
 
     # Display array info and plot
@@ -579,6 +580,76 @@ def render_welcome() -> None:
                     st.error(f"Error: {e}")
             else:
                 st.warning("Please enter a path")
+
+
+def render_group_view(node: TreeNode) -> None:
+    """Render group information and attributes.
+
+    Args:
+        node: TreeNode representing a group.
+    """
+    st.subheader(f"📁 {node.path}")
+
+    # Get the group object
+    try:
+        root = zarr.open(str(st.session_state.zarr_path), mode="r")
+        if node.path == "/" or node.path == "":
+            group = root
+        else:
+            # Remove leading slash for zarr access
+            path = node.path.lstrip("/")
+            group = root[path]
+    except Exception as e:
+        st.error(f"Failed to open group: {e}")
+        return
+
+    # Display group info
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Children", len(node.children))
+    with col2:
+        num_arrays = sum(1 for c in node.children if c.is_array)
+        st.metric("Arrays", num_arrays)
+
+    # Display group attributes
+    st.divider()
+    st.markdown("### 📋 Group Attributes")
+
+    try:
+        attrs = format_attributes(group.attrs)
+        if attrs:
+            # Display timing metadata prominently if present
+            timing_keys = ["acquisition_rate", "frame_time"]
+            timing_attrs = {k: v for k, v in attrs.items() if k in timing_keys}
+            other_attrs = {k: v for k, v in attrs.items() if k not in timing_keys}
+
+            if timing_attrs:
+                with st.expander("⏱️ Timing Metadata", expanded=True):
+                    for key, value in timing_attrs.items():
+                        if key == "acquisition_rate":
+                            st.markdown(f"**{key}:** `{value}` Hz")
+                        elif key == "frame_time":
+                            st.markdown(f"**{key}:** `{value}` seconds")
+                        else:
+                            st.markdown(f"**{key}:** `{value}`")
+
+            if other_attrs:
+                with st.expander(f"Other Attributes ({len(other_attrs)} items)", expanded=len(timing_attrs) == 0):
+                    for key, value in other_attrs.items():
+                        if isinstance(value, str) and "\n" in value:
+                            st.markdown(f"**{key}:**")
+                            st.code(value, language="json")
+                        else:
+                            st.markdown(f"**{key}:** `{value}`")
+        else:
+            st.info("No attributes found for this group.")
+    except Exception as e:
+        st.warning(f"Could not load attributes: {e}")
+
+    # Show child summary
+    st.divider()
+    st.markdown("### 📂 Contents")
+    st.info(f"This group contains {len(node.children)} items. Select a child from the sidebar to explore.")
 
 
 def render_array_view(node: TreeNode) -> None:

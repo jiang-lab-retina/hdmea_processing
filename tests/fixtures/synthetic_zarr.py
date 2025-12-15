@@ -198,3 +198,77 @@ def empty_zarr_path(tmp_path: Path) -> Iterator[Path]:
     zarr_path = tmp_path / "empty.zarr"
     create_empty_zarr(zarr_path)
     yield zarr_path
+
+
+def create_zarr_with_metadata(
+    path: Path,
+    acquisition_rate: float | None = 20000.0,
+    frame_time: float | None = None,
+    include_metadata_group: bool = True,
+) -> zarr.Group:
+    """Create a zarr archive with metadata for testing timing fields.
+
+    Args:
+        path: Directory path for the zarr archive.
+        acquisition_rate: Sampling rate in Hz (None to omit).
+        frame_time: Frame time in seconds (None to compute from acquisition_rate).
+        include_metadata_group: Whether to include the /metadata group.
+
+    Returns:
+        Root zarr group of the created archive.
+    """
+    root = zarr.open(str(path), mode="w")
+
+    # Add root attributes
+    root.attrs["dataset_id"] = "test_recording"
+    root.attrs["hdmea_pipeline_version"] = "0.1.0"
+
+    # Create metadata group
+    if include_metadata_group:
+        metadata = root.create_group("metadata")
+
+        if acquisition_rate is not None:
+            metadata.attrs["acquisition_rate"] = acquisition_rate
+            
+            # Compute frame_time if not provided
+            if frame_time is None and acquisition_rate > 0:
+                frame_time = 1.0 / acquisition_rate
+        
+        if frame_time is not None:
+            metadata.attrs["frame_time"] = frame_time
+        
+        metadata.attrs["dataset_id"] = "test_recording"
+
+    return root
+
+
+@pytest.fixture
+def zarr_with_timing_metadata(tmp_path: Path) -> Iterator[Path]:
+    """Pytest fixture providing a zarr archive with timing metadata.
+
+    Yields:
+        Path to a zarr archive containing acquisition_rate and frame_time.
+    """
+    zarr_path = tmp_path / "timing_test.zarr"
+    create_zarr_with_metadata(
+        zarr_path,
+        acquisition_rate=20000.0,
+        frame_time=0.00005,
+    )
+    yield zarr_path
+
+
+@pytest.fixture
+def zarr_without_timing_metadata(tmp_path: Path) -> Iterator[Path]:
+    """Pytest fixture providing a zarr archive without timing metadata.
+
+    Yields:
+        Path to a zarr archive without acquisition_rate and frame_time.
+    """
+    zarr_path = tmp_path / "no_timing.zarr"
+    create_zarr_with_metadata(
+        zarr_path,
+        acquisition_rate=None,
+        frame_time=None,
+    )
+    yield zarr_path

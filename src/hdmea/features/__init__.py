@@ -23,6 +23,7 @@ from hdmea.features.chromatic import ChromaticFeatureExtractor
 from hdmea.features.frequency import FrequencyFeatureExtractor
 from hdmea.features.cell_type import CellTypeFeatureExtractor
 from hdmea.features.example import ExampleFeatureExtractor
+from hdmea.features.frif import FRIFExtractor
 
 __all__ = [
     "FeatureRegistry",
@@ -35,5 +36,6 @@ __all__ = [
     "FrequencyFeatureExtractor",
     "CellTypeFeatureExtractor",
     "ExampleFeatureExtractor",
+    "FRIFExtractor",
 ]
 

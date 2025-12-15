@@ -49,10 +49,35 @@ def load_cmtr_data(cmtr_path: Path) -> Dict[str, Any]:
         metadata = {}
         
         # Extract file attributes
+        acquisition_rate = None
         if hasattr(cmtr_data, "attrs"):
             for key in cmtr_data.attrs.keys():
                 try:
-                    metadata[key] = cmtr_data.attrs[key]
+                    val = cmtr_data.attrs[key]
+                    # Decode bytes to string
+                    if isinstance(val, bytes):
+                        metadata[key] = val.decode('utf-8', errors='ignore')
+                    elif hasattr(val, '__len__') and len(val) == 1:
+                        metadata[key] = val[0]
+                    else:
+                        metadata[key] = val
+                    
+                    # Look for acquisition rate in common attribute names
+                    key_lower = key.lower()
+                    if acquisition_rate is None and any(
+                        rate_key in key_lower 
+                        for rate_key in ['samplingrate', 'sampling_rate', 'samplerate', 'sample_rate', 'acquisitionrate', 'acquisition_rate']
+                    ):
+                        try:
+                            if isinstance(val, (int, float)):
+                                acquisition_rate = float(val)
+                            elif hasattr(val, '__len__') and len(val) == 1:
+                                acquisition_rate = float(val[0])
+                            elif hasattr(val, '__len__') and len(val) > 0:
+                                acquisition_rate = float(val[0])
+                            logger.debug(f"Found acquisition_rate in CMTR attr '{key}': {acquisition_rate}")
+                        except (ValueError, TypeError):
+                            pass
                 except Exception:
                     pass
         
@@ -124,11 +149,18 @@ def load_cmtr_data(cmtr_path: Path) -> Dict[str, Any]:
         if not units:
             logger.warning("No units found in CMTR file - file may be empty or have different structure")
         
-        return {
+        result = {
             "units": units,
             "metadata": metadata,
             "source_path": str(cmtr_path),
         }
+        
+        # Add acquisition_rate if found
+        if acquisition_rate is not None and acquisition_rate > 0:
+            result["acquisition_rate"] = acquisition_rate
+            logger.info(f"Extracted acquisition_rate from CMTR: {acquisition_rate:.0f} Hz")
+        
+        return result
         
     except ImportError:
         raise DataLoadError(
