@@ -115,10 +115,10 @@ for details.
 │  ┌────────────────────────────────────────────────────────────────┐     │
 │  │         add_section_time_analog()  [Peak detection]             │     │
 │  │                                                                 │     │
-│  │  • Detect peaks in raw_ch1 signal (stimulus onsets)            │     │
-│  │  • Convert sample indices to display frame indices             │     │
-│  │  • Apply plot_duration and repeat parameters                   │     │
-│  │  • Write to stimulus/section_time/{movie_name}                 │     │
+│  │  • Detect peaks in raw_ch1 derivative (stimulus onsets)        │     │
+│  │  • Store section times as acquisition sample indices           │     │
+│  │  • Extract and average light templates across trials           │     │
+│  │  • Write to stimulus/section_time/ and stimulus/light_template/│     │
 │  └────────────────────────────────────────────────────────────────┘     │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -158,13 +158,15 @@ add_section_time(
 )
 
 # Method 2: Analog peak detection (for post-hoc timing)
+# Note: Inspect np.diff(raw_ch1) to determine appropriate threshold
 add_section_time_analog(
     zarr_path=result.zarr_path,
-    threshold_value=3e6,  # Inspect signal to determine
+    threshold_value=1e6,  # Determined from signal inspection
     movie_name="iprgc_test",
-    plot_duration=120.0,  # 2 minute windows
-    repeat=3,  # Use first 3 trials only
+    plot_duration=120.0,  # 2 minute windows (in seconds)
+    repeat=2,  # Limit section_time to first 2 trials (light_template uses all)
 )
+# Output: section_time in acquisition sample indices, light_template averaged
 
 # Stage 2: Extract features
 extract_result = extract_features(
@@ -213,12 +215,14 @@ The pipeline works with multiple time coordinate systems. Understanding their re
 
 | System | Unit | Rate | Usage | Example |
 |--------|------|------|-------|---------|
-| **Acquisition Samples** | Sample index | ~20 kHz | Raw sensor data, spike times | `spike_times`, `raw_ch1`, `raw_ch2` |
-| **Display Frames** | Frame index | ~45 Hz* | Section boundaries, firing rates | `section_time`, `firing_rate_10hz` |
+| **Acquisition Samples** | Sample index | ~20 kHz | Raw data, spike times, **section_time** | `spike_times`, `raw_ch1`, `section_time` |
+| **Display Frames** | Frame index | ~45 Hz* | Frame sync, internal computations | `frame_timestamps`, `firing_rate_10hz` |
 | **10 Hz Bins** | Bin index | 10 Hz | Legacy compatibility | Deprecated in current pipeline |
 | **Time (seconds)** | Seconds | - | Duration parameters | `plot_duration`, `recording_duration_s` |
 
 *Display frame rate varies by recording and is detected from `raw_ch2` signal
+
+**Important**: As of 2025-12-17, all `section_time` arrays use acquisition sample indices for unified time representation.
 
 ### Key Metadata Arrays
 
@@ -228,6 +232,8 @@ The pipeline works with multiple time coordinate systems. Understanding their re
 | `acquisition_rate` | `metadata/acquisition_rate` | scalar | Samples per second for raw data (typically 20000.0 Hz) |
 | `sample_interval` | `metadata/sample_interval` | scalar | Seconds per sample (1 / acquisition_rate) |
 | `frame_time` | `stimulus/frame_time/default` | (N_frames,) | Display frame timestamps in seconds |
+| `section_time` | `stimulus/section_time/{movie}` | (N_trials, 2) | Trial boundaries as [start_sample, end_sample] |
+| `light_template` | `stimulus/light_template/{movie}` | (M,) | Averaged light reference trace (M = duration in samples) |
 
 ### Time Conversions
 
@@ -280,29 +286,34 @@ time_seconds = frame_time[frame_idx]
 | Aspect | Legacy Code | Current Pipeline |
 |--------|-------------|------------------|
 | **Frame rate** | Assumed 10 Hz constant | Detected from `raw_ch2` (~45 Hz typical) |
-| **Section time units** | 10 Hz bin indices | Display frame indices (variable rate) |
+| **Section time units** | 10 Hz bin indices | **Acquisition sample indices** (~20 kHz) |
 | **Light reference** | Downsampled `10hz_ch1` | Full resolution `raw_ch1` at acquisition rate |
 | **Timestamp detection** | Fixed 10 Hz | Peak detection in `raw_ch2` derivative |
 
 #### Section Time Coordinate System
 
-All `section_time` arrays use **display frame indices**, not 10 Hz bins:
+All `section_time` arrays use **acquisition sample indices** (at ~20 kHz), providing maximum temporal resolution:
 
 ```python
-# section_time array format
+# section_time array format - values are acquisition sample indices
 section_time = np.array([
-    [start_frame, end_frame],  # Trial 1
-    [start_frame, end_frame],  # Trial 2
+    [start_sample, end_sample],  # Trial 1: ~200000, ~2600000 (10s to 130s at 20kHz)
+    [start_sample, end_sample],  # Trial 2
     # ...
 ])
 
-# To extract firing rate for a movie section:
-unit_firing_rate = root["units"]["unit_000"]["firing_rate_10hz"]
-start, end = section_time[trial_idx]
-trial_response = unit_firing_rate[start:end]
+# To convert to time in seconds:
+acquisition_rate = float(root["metadata"]["acquisition_rate"][()])
+start_sample, end_sample = section_time[trial_idx]
+start_time_s = start_sample / acquisition_rate
+end_time_s = end_sample / acquisition_rate
+
+# To slice raw light reference signal directly:
+raw_ch1 = root["stimulus"]["light_reference"]["raw_ch1"]
+trial_signal = raw_ch1[start_sample:end_sample]
 ```
 
-**⚠️ Warning**: Do NOT assume section_time values are at 10 Hz. They reference display frames at the recording's actual frame rate (~45 Hz typical).
+**⚠️ Note**: Section time values are large integers (~millions) representing acquisition samples, not frame indices. To convert to display frames if needed, use `frame_timestamps` for lookup.
 
 ### Frame Rate Detection
 
@@ -321,53 +332,52 @@ Display rate: ~45.7 Hz
 
 ### Analog Section Time Detection
 
-The `add_section_time_analog()` function performs the following conversions:
+The `add_section_time_analog()` function stores acquisition sample indices directly:
 
 ```
-1. Detect peaks in raw_ch1 (acquisition samples)
+1. Detect peaks in raw_ch1 derivative (acquisition samples)
    └─→ onset_samples [shape: (N_trials,)]
 
 2. Calculate end times (seconds → samples)
-   └─→ end_samples = onset_samples + (plot_duration * acquisition_rate)
+   └─→ end_samples = onset_samples + int(plot_duration * acquisition_rate)
+   └─→ Clip to signal length: end_samples = min(end_samples, len(raw_ch1) - 1)
 
-3. Convert to display frames (samples → frames)
-   └─→ start_frames = _sample_to_nearest_frame(onset_samples, frame_timestamps)
-   └─→ end_frames = _sample_to_nearest_frame(end_samples, frame_timestamps)
+3. Store section_time (acquisition sample indices directly)
+   └─→ section_time = [[onset_samples[i], end_samples[i]] for i in trials]
 
-4. Store section_time (display frame indices)
-   └─→ section_time = [[start_frames[i], end_frames[i]] for i in trials]
+4. Extract and average light templates from all detected trials
+   └─→ light_template = mean(raw_ch1[onset:end] for each trial)
 ```
 
-This ensures analog-detected sections are compatible with playlist-based sections.
+**Note**: `frame_timestamps` is NOT required for analog section time detection.
+The function works directly with acquisition sample indices from `raw_ch1`.
 
 ### Best Practices
 
-1. **Always use `frame_timestamps` for conversions** - Don't assume fixed frame rates
-2. **Check acquisition_rate** - Don't hardcode 20 kHz, read from metadata
-3. **Nearest frame rounding** - Use `_sample_to_nearest_frame()` for sample→frame conversion
-4. **Section time units** - Always in display frame indices, not 10 Hz bins
-5. **Inspect signals** - For analog detection, always inspect derivative statistics before choosing threshold
+1. **Check acquisition_rate** - Don't hardcode 20 kHz, read from metadata
+2. **Section time units** - All `section_time` arrays use acquisition sample indices
+3. **Convert to time** - Use `time_s = sample_index / acquisition_rate` for time conversion
+4. **Convert to frames** - Use `frame_timestamps` lookup if display frame indices are needed
+5. **Inspect signals** - For analog detection, always inspect `np.diff(raw_ch1)` to choose threshold
 
 ### Common Edge Cases
 
-#### Raw Signal Extends Beyond Frame Timestamps
+#### Section Extends Beyond Signal Length
 
-Sometimes `raw_ch1` extends beyond the coverage of `frame_timestamps`:
+When `plot_duration` is long, sections may extend beyond the recorded signal:
 
 ```
-frame_timestamps: covers samples 0 to 18,846,811
-raw_ch1: extends to sample 23,793,999
+raw_ch1 length: 23,794,000 samples (≈1190 seconds at 20 kHz)
+plot_duration: 120 seconds → 2,400,000 samples per trial
+Last onset: sample 21,357,695 → end would be 23,757,695 (within range ✓)
 ```
 
-**Impact**: Peaks detected beyond `frame_timestamps[-1]` cannot be accurately converted to display frame indices.
-
-**Behavior**: `add_section_time_analog()` filters out such peaks with a warning:
+**Behavior**: `add_section_time_analog()` clips end samples to signal length with a warning:
 ```
-Filtered out 2 peaks beyond frame_timestamps coverage (sample > 18,846,811). 
-Raw signal extends beyond frame sync range.
+2 section(s) truncated at signal boundary (end sample clipped to 23,793,999)
 ```
 
-**Cause**: The frame sync signal (`raw_ch2`) may have stopped before the recording ended, or the recording includes pre/post-stimulus baseline without visual stimuli.
+**Light template handling**: Truncated sections are included in template averaging using `np.nanmean` with `zip_longest` to handle variable lengths.
 
 ## Related Documentation
 
