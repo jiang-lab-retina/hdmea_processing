@@ -1,15 +1,18 @@
 <!--
   Sync Impact Report
   ==================
-  Version change: 0.0.0 → 1.0.0
-  Modified principles: N/A (initial creation)
-  Added sections: Purpose, Core Principles (I-VII), Architecture Rules,
-    Notebook & Jupytext Rules, Artifacts/Caching/Reproducibility,
-    Feature Extraction Standards, Analysis/Viz Standards, Testing/Quality Gates,
-    Documentation Rules, Governance, Amendment/Update Checklist
-  Removed sections: All template placeholders
-  Templates requiring updates: ✅ All templates compatible
-  Follow-up TODOs: None
+  Version change: 1.0.0 → 1.1.0
+  Modified principles: None
+  Added sections:
+    - "Pipeline Documentation Rules" under Documentation Rules
+  Removed sections: None
+  Templates requiring updates:
+    - ✅ `.specify/templates/plan-template.md` - no changes needed (documentation is independent)
+    - ✅ `.specify/templates/spec-template.md` - no changes needed
+    - ✅ `.specify/templates/tasks-template.md` - no changes needed
+  Follow-up TODOs:
+    - Create initial `docs/pipeline_explained.md` with current pipeline flow
+    - Create initial `docs/pipeline_log.md` with header structure
 -->
 
 # HD-MEA Data Analysis Pipeline Constitution
@@ -469,6 +472,54 @@ A feature/analysis is complete when:
 - If **product requirements leak into plan.md**, they MUST be moved to spec.md immediately.
 - PR reviews MUST check for this separation.
 
+### Pipeline Documentation (NON-NEGOTIABLE)
+
+The pipeline MUST maintain two living documentation files:
+
+| Document | Location | Purpose | Update Frequency |
+|----------|----------|---------|------------------|
+| `docs/pipeline_explained.md` | Project docs | Current pipeline flow and architecture | Updated whenever pipeline flow changes |
+| `docs/pipeline_log.md` | Project docs | Changelog of major pipeline changes | Appended for every major change |
+
+#### `pipeline_explained.md` Requirements
+
+- MUST describe the current end-to-end flow of the pipeline
+- MUST include a visual diagram or flowchart of pipeline stages
+- MUST document the data flow: inputs → stages → outputs
+- MUST list all pipeline entry points (functions/CLI commands)
+- MUST be updated **before** merging any PR that changes pipeline flow
+- SHOULD include example usage for common workflows
+
+#### `pipeline_log.md` Requirements
+
+- MUST log all **major changes** to the pipeline, including:
+  - New pipeline stages added
+  - Existing stages modified or removed
+  - New data formats or schemas introduced
+  - Breaking changes to pipeline APIs
+  - New feature extractors that affect pipeline flow
+  - Changes to caching or artifact storage
+- Each entry MUST include:
+  - Date (ISO 8601 format)
+  - Brief description of change
+  - Affected components/modules
+  - Migration notes (if breaking)
+- Entries MUST be in reverse chronological order (newest first)
+- Format:
+
+```markdown
+## [YYYY-MM-DD] Brief Title
+
+**Change**: Description of what changed
+**Affected**: List of affected modules/components
+**Migration**: Steps needed to update existing code (if applicable)
+**PR/Branch**: Reference to PR or branch (if applicable)
+```
+
+**Rationale**: Living documentation ensures the pipeline remains understandable as it evolves.
+The log provides an audit trail for debugging and onboarding, while the explained document
+serves as the canonical reference for current behavior.
+
 ### Code Documentation
 
 - **Public functions**: MUST have docstrings with Args, Returns, Raises
@@ -553,4 +604,4 @@ When amending this constitution:
 
 ---
 
-**Version**: 1.0.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-14
+**Version**: 1.1.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-16

@@ -232,28 +232,24 @@ def write_stimulus(
                 )
 
 
-def write_metadata(
-    root: zarr.Group,
-    metadata: Dict[str, Any],
+def _write_metadata_to_group(
+    group: zarr.Group,
+    data: Dict[str, Any],
 ) -> None:
     """
-    Write recording metadata to Zarr.
+    Write metadata dictionary to a Zarr group.
     
-    All metadata values are stored as datasets (arrays) in the metadata group,
-    making them visible in the zarr tree structure.
+    Helper function that recursively writes metadata values as datasets.
     
     Args:
-        root: Root Zarr group
-        metadata: Metadata dictionary
+        group: Zarr group to write to
+        data: Dictionary of values to write
     """
-    metadata_group = root["metadata"]
-    
-    # Write metadata as datasets (visible in .tree())
-    for key, value in metadata.items():
+    for key, value in data.items():
         if isinstance(value, (int, float)):
             # Store scalars as 1-element arrays (visible in tree)
             arr = np.array([value])
-            metadata_group.create_dataset(
+            group.create_dataset(
                 key,
                 data=arr,
                 shape=arr.shape,
@@ -263,7 +259,7 @@ def write_metadata(
         elif isinstance(value, str):
             # Store strings as 1-element object arrays
             arr = np.array([value], dtype=object)
-            metadata_group.create_dataset(
+            group.create_dataset(
                 key,
                 data=arr,
                 shape=arr.shape,
@@ -271,19 +267,13 @@ def write_metadata(
                 overwrite=True,
             )
         elif isinstance(value, dict):
-            # Store dicts as JSON string in 1-element array
-            arr = np.array([json.dumps(value)], dtype=object)
-            metadata_group.create_dataset(
-                key,
-                data=arr,
-                shape=arr.shape,
-                dtype=str,
-                overwrite=True,
-            )
+            # Create subgroup for nested dicts (e.g., sys_meta)
+            subgroup = group.create_group(key, overwrite=True)
+            _write_metadata_to_group(subgroup, value)
         elif isinstance(value, np.ndarray):
             # Handle numpy arrays directly
             if value.ndim > 0:
-                metadata_group.create_dataset(
+                group.create_dataset(
                     key,
                     data=value,
                     shape=value.shape,
@@ -293,13 +283,34 @@ def write_metadata(
             else:
                 # Scalar numpy array -> wrap in 1-element array
                 arr = np.array([value.item()])
-                metadata_group.create_dataset(
+                group.create_dataset(
                     key,
                     data=arr,
                     shape=arr.shape,
                     dtype=arr.dtype,
                     overwrite=True,
                 )
+
+
+def write_metadata(
+    root: zarr.Group,
+    metadata: Dict[str, Any],
+) -> None:
+    """
+    Write recording metadata to Zarr.
+    
+    Top-level timing metadata (acquisition_rate, frame_time, frame_timestamps)
+    is stored directly in the metadata group. System metadata from raw files
+    (CMCR/CMTR) is stored under metadata/sys_meta subgroup.
+    
+    Args:
+        root: Root Zarr group
+        metadata: Metadata dictionary (may contain nested 'sys_meta' dict)
+    """
+    metadata_group = root["metadata"]
+    
+    # Write metadata recursively (handles sys_meta as subgroup)
+    _write_metadata_to_group(metadata_group, metadata)
     
     logger.debug(f"Wrote metadata: {list(metadata.keys())}")
 

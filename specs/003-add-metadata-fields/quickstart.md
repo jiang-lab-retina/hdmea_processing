@@ -6,11 +6,31 @@
 
 ## Overview
 
-This feature adds two timing metadata fields to Zarr archives:
+This feature adds timing metadata fields to Zarr archives:
 - `acquisition_rate`: Sampling rate in Hz (e.g., 20000)
-- `frame_time`: Duration per sample in seconds (e.g., 0.00005)
+- `sample_interval`: Duration per sample in seconds (e.g., 0.00005)
+- `frame_timestamps`: Array of sample indices where video frames start
+- `frame_time`: Array of frame start times in seconds
 
-The values are extracted using a priority chain: **CMCR → CMTR → default (20000 Hz)**.
+Raw file metadata from CMCR/CMTR is stored under `metadata/sys_meta/` subgroup.
+
+The `acquisition_rate` is extracted using a priority chain: **CMCR → CMTR → default (20000 Hz)**.
+
+## Metadata Structure
+
+```
+/metadata/
+├── acquisition_rate     # float64 - sampling rate in Hz
+├── sample_interval      # float64 - 1/acquisition_rate
+├── frame_timestamps     # uint64 array - sample indices of frame starts
+├── frame_time           # float64 array - frame times in seconds
+├── dataset_id           # string - dataset identifier
+└── sys_meta/            # subgroup with raw file metadata
+    ├── DateTime         # recording date/time
+    ├── ProgramName      # e.g., "CMOS-MEA-Control"
+    ├── recording_duration_s  # total duration
+    └── ...              # other CMCR/CMTR metadata
+```
 
 ## Usage
 
@@ -25,10 +45,24 @@ root = zarr.open("artifacts/preprocessed/RECORDING_001.zarr", mode="r")
 # Access timing metadata (stored as 1-element arrays)
 metadata = root["metadata"]
 acquisition_rate = metadata["acquisition_rate"][0]  # e.g., 20000.0
-frame_time = metadata["frame_time"][0]              # e.g., 0.00005
+sample_interval = metadata["sample_interval"][0]    # e.g., 0.00005
+
+# Access frame timestamps (arrays)
+frame_timestamps = metadata["frame_timestamps"][:]  # sample indices
+frame_time = metadata["frame_time"][:]              # seconds
 
 print(f"Sampling rate: {acquisition_rate} Hz")
-print(f"Frame duration: {frame_time * 1e6:.2f} µs")
+print(f"Sample interval: {sample_interval * 1e6:.2f} µs")
+print(f"Number of frames: {len(frame_timestamps)}")
+```
+
+### Accessing Raw File Metadata (sys_meta)
+
+```python
+# Access system metadata from raw files
+sys_meta = metadata["sys_meta"]
+recording_duration = sys_meta["recording_duration_s"][0]
+program_name = sys_meta["ProgramName"][0]
 ```
 
 ### Using in Analysis

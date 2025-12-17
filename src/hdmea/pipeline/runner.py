@@ -311,7 +311,10 @@ def load_recording(
     
     units_data = {}
     light_reference = {}
+    # Top-level metadata (timing + dataset info)
     metadata = {"dataset_id": dataset_id}
+    # System metadata from raw files (CMCR/CMTR) goes under sys_meta
+    sys_meta = {}
     
     # Track acquisition_rate sources for priority chain
     cmcr_acquisition_rate = None
@@ -322,7 +325,8 @@ def load_recording(
         try:
             cmtr_result = load_cmtr_data(cmtr_path_obj)
             units_data = cmtr_result["units"]
-            metadata.update(cmtr_result.get("metadata", {}))
+            # Raw file metadata goes to sys_meta
+            sys_meta.update(cmtr_result.get("metadata", {}))
             # Extract CMTR acquisition_rate as fallback
             cmtr_acquisition_rate = cmtr_result.get("acquisition_rate")
         except Exception as e:
@@ -338,7 +342,8 @@ def load_recording(
             light_reference = cmcr_result.get("light_reference", {})
             # Extract CMCR acquisition_rate as primary source
             cmcr_acquisition_rate = cmcr_result.get("acquisition_rate")
-            metadata.update(cmcr_result.get("metadata", {}))
+            # Raw file metadata goes to sys_meta
+            sys_meta.update(cmcr_result.get("metadata", {}))
         except Exception as e:
             logger.error(f"Failed to load CMCR: {e}")
             warnings.append(f"CMCR load failed: {e}")
@@ -393,7 +398,7 @@ def load_recording(
                 logger.warning(f"Failed to detect frame timestamps: {e}")
                 warnings.append(f"Frame timestamp detection failed: {e}")
     
-    # Add timing metadata
+    # Add timing metadata (top-level, not under sys_meta)
     metadata["acquisition_rate"] = acquisition_rate
     metadata["sample_interval"] = sample_interval  # per-sample time (1/acquisition_rate)
     if frame_timestamps is not None:
@@ -401,12 +406,15 @@ def load_recording(
         # Compute frame_time as array of timestamps in seconds
         metadata["frame_time"] = (frame_timestamps / acquisition_rate).astype(np.float64)
     
+    # Add sys_meta (raw file metadata) as nested dict
+    metadata["sys_meta"] = sys_meta
+    
     # Compute firing rates for each unit
     for unit_id, unit_info in units_data.items():
         spike_times = unit_info.get("spike_times")
         if spike_times is not None and len(spike_times) > 0:
-            # Get recording duration from metadata or estimate
-            duration_us = metadata.get("recording_duration_s", 0) * 1e6
+            # Get recording duration from sys_meta or estimate
+            duration_us = sys_meta.get("recording_duration_s", 0) * 1e6
             if duration_us == 0:
                 duration_us = spike_times[-1] + 1e6  # Add 1 second buffer
             

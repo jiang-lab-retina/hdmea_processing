@@ -8,6 +8,7 @@ logging.basicConfig(level=logging.INFO, format='%(name)s - %(levelname)s - %(mes
 
 from hdmea.pipeline import load_recording
 from hdmea.pipeline import extract_features
+from hdmea.pipeline import add_section_time
 
 print("=" * 60)
 print("Running pipeline test...")
@@ -22,16 +23,18 @@ result = load_recording(
 )
 
 
-# Open the Zarr archive and check metadata
-root = zarr.open(str(result.zarr_path), mode="r")
-
-# Show the tree structure
-print("\nZarr tree structure:")
-print(root.tree())
-
-
-# After loading recording (which detects frame_timestamps)
-result = extract_features(
+# Extract FRIF features
+print("\n" + "=" * 60)
+print("Extracting FRIF features...")
+print("=" * 60)
+extract_result = extract_features(
     zarr_path=result.zarr_path,
-    features=["frif"]
+    features=["frif"],
+    force=True
+)
+
+add_section_time(
+    zarr_path=result.zarr_path,
+    playlist_name="play_all_simple",
+    repeats=3,
 )
