@@ -5,6 +5,67 @@ Entries are in reverse chronological order (newest first).
 
 ---
 
+## [2025-12-17] Spike Times Unit Conversion and Stimulation Sectioning
+
+**Change**: Two-part feature implementing spike timestamp standardization and trial-based sectioning:
+
+1. **Spike Times Unit Conversion**: Modified `load_recording()` to convert raw spike timestamps from nanoseconds (10^-9 s) to acquisition sample indices during loading. Formula: `sample_index = round(timestamp_ns × acquisition_rate / 10^9)`. All `spike_times` arrays now use a consistent unit (sample indices at ~20 kHz) with `unit="sample_index"` attribute.
+
+2. **Spike Times Sectioning**: Added `section_spike_times()` function to extract spike timestamps within trial boundaries defined by `section_time`. Stores data in TWO formats:
+   - `full_spike_times`: All spikes from all trials combined (sorted, unique)
+   - `trials_spike_times/{idx}`: Spikes per individual trial
+
+**Key Features**:
+- `trial_repeats` parameter limits number of trials to process (default: 3)
+- `pad_margin` tuple `(pre_s, post_s)` extends trial boundaries (default: 2s pre, 0s post)
+- `force=False` raises `FileExistsError` if sectioned data exists
+- Empty spike_times handled gracefully (stores empty arrays)
+- Boundary clamping prevents negative sample indices
+
+**Affected**:
+- `hdmea.pipeline.runner.load_recording()` - spike_times now in sample indices
+- `hdmea.pipeline.runner._convert_spike_times_to_samples()` - new conversion helper
+- `hdmea.io.zarr_store.write_units()` - adds `unit="sample_index"` attribute
+- `hdmea.io.spike_sectioning` - new module with `section_spike_times()` function
+- `hdmea.io.__init__` - exports `section_spike_times`, `SectionResult`
+
+**Zarr Structure**:
+```
+units/{unit_id}/
+├── spike_times                    # Now in sample indices (was ns)
+│   └── .zattrs: {"unit": "sample_index"}
+└── spike_times_sectioned/
+    └── {movie_name}/
+        ├── full_spike_times       # All trials combined
+        ├── trials_spike_times/
+        │   ├── 0                  # Trial 0 spikes
+        │   ├── 1                  # Trial 1 spikes
+        │   └── ...
+        └── .zattrs: {pad_margin, pre_samples, post_samples, trial_repeats, n_trials}
+```
+
+**Usage**:
+```python
+from hdmea.io import section_spike_times
+
+result = section_spike_times(
+    zarr_path="artifacts/JIANG009_2025-04-10.zarr",
+    trial_repeats=3,
+    pad_margin=(2.0, 0.0),  # 2s pre-margin, 0s post-margin
+    force=False,
+)
+print(f"Processed {result.units_processed} units, {len(result.movies_processed)} movies")
+```
+
+**Migration**: 
+- Existing Zarr files with spike_times in nanoseconds remain unchanged
+- Re-running `load_recording(force=True)` will regenerate with sample indices
+- Sectioned data is optional and additive
+
+**PR/Branch**: `006-spike-times-sectioning`
+
+---
+
 ## [2025-12-17] Unify Section Time to Acquisition Sample Indices
 
 **Change**: Modified both `add_section_time_analog()` and `add_section_time()` to output section times in **acquisition sample indices** instead of display frame indices. This provides a unified unit across all section time data for consistent downstream processing.

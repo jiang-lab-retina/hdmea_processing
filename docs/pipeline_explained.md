@@ -39,6 +39,7 @@ for details.
 │  │  • Extract timing metadata             │ │                  │         │
 │  │  • Detect frame timestamps             │ │                  │         │
 │  │  • Compute firing rates (10Hz)         │ │                  │         │
+│  │  • Convert spike_times to sample units │ │                  │         │
 │  │  • Write to Zarr archive               │ │                  │         │
 │  └───────────────────┬────────────────────┘ │                  │         │
 │                      │                      │                  │         │
@@ -53,7 +54,8 @@ for details.
 │  │                                                                  │    │
 │  │  ├── units/                    # Spike-sorted units              │    │
 │  │  │   ├── {unit_id}/                                              │    │
-│  │  │   │   ├── spike_times       # Spike timestamps (µs)           │    │
+│  │  │   │   ├── spike_times       # Spike timestamps (sample idx)   │    │
+│  │  │   │   ├── spike_times_sectioned/  # Sectioned by movie trial  │    │
 │  │  │   │   ├── waveform          # Average waveform                │    │
 │  │  │   │   ├── firing_rate_10hz  # Binned firing rate              │    │
 │  │  │   │   └── features/         # Extracted features (Stage 2)    │    │
@@ -121,6 +123,16 @@ for details.
 │  │  • Write to stimulus/section_time/ and stimulus/light_template/│     │
 │  └────────────────────────────────────────────────────────────────┘     │
 │                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐     │
+│  │         section_spike_times()  [Spike sectioning]              │     │
+│  │                                                                 │     │
+│  │  • Extract spikes within trial boundaries (with padding)       │     │
+│  │  • Store full_spike_times (all trials combined)                │     │
+│  │  • Store trials_spike_times (per-trial arrays)                 │     │
+│  │  • Supports pad_margin (pre/post) for extended boundaries      │     │
+│  │  • Write to units/{unit_id}/spike_times_sectioned/{movie}/     │     │
+│  └────────────────────────────────────────────────────────────────┘     │
+│                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -134,6 +146,7 @@ for details.
 | `extract_features()` | `hdmea.pipeline` | Stage 2: Extract features from Zarr |
 | `add_section_time()` | `hdmea.io.section_time` | Add movie section timing (playlist-based) |
 | `add_section_time_analog()` | `hdmea.io.section_time` | Add movie section timing (peak detection) |
+| `section_spike_times()` | `hdmea.io.spike_sectioning` | Section spike times by trial boundaries |
 | `run_flow()` | `hdmea.pipeline` | Run a named flow (Stage 1 + Stage 2) |
 
 ### Example Usage

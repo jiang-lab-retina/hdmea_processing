@@ -5,12 +5,15 @@ Implements Stage 1 (Data Loading) and Stage 2 (Feature Extraction) with caching.
 """
 
 import logging
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from tqdm import tqdm
 
 from hdmea.io.cmcr import load_cmcr_data
 from hdmea.io.cmtr import load_cmtr_data, validate_cmcr_cmtr_match
@@ -104,6 +107,41 @@ def compute_frame_time(acquisition_rate: float) -> float:
     if acquisition_rate <= 0:
         raise ValueError(f"acquisition_rate must be > 0, got {acquisition_rate}")
     return 1.0 / acquisition_rate
+
+
+def _convert_spike_times_to_samples(
+    spike_times_us: np.ndarray,
+    acquisition_rate: float,
+) -> np.ndarray:
+    """
+    Convert spike timestamps from microseconds to acquisition sample indices.
+    
+    Args:
+        spike_times_us: Array of spike timestamps in microseconds (10^-6 s).
+            McsPy returns timestamps in microseconds from CMTR files.
+        acquisition_rate: Sampling rate in Hz.
+    
+    Returns:
+        Array of spike timestamps as sample indices (uint64).
+    
+    Formula:
+        sample_index = round(timestamp_us × acquisition_rate / 10^6)
+    
+    Example:
+        >>> spike_times_us = np.array([50_000, 100_000])  # 50ms, 100ms
+        >>> _convert_spike_times_to_samples(spike_times_us, 20000.0)
+        array([1000, 2000], dtype=uint64)
+    """
+    if len(spike_times_us) == 0:
+        return np.array([], dtype=np.uint64)
+    
+    # Convert: sample_index = timestamp_us * acquisition_rate / 1e6
+    # McsPy returns timestamps in microseconds (µs), not nanoseconds
+    spike_times_samples = np.round(
+        spike_times_us.astype(np.float64) * acquisition_rate / 1e6
+    ).astype(np.uint64)
+    
+    return spike_times_samples
 
 
 def get_frame_timestamps(
@@ -409,18 +447,47 @@ def load_recording(
     # Add sys_meta (raw file metadata) as nested dict
     metadata["sys_meta"] = sys_meta
     
-    # Compute firing rates for each unit
-    for unit_id, unit_info in units_data.items():
+    # Process units in parallel: compute firing rates and convert spike_times
+    # Uses 80% of CPU cores for parallel processing
+    cpu_count = os.cpu_count() or 4
+    max_workers = max(1, min(int(cpu_count * 0.8), len(units_data)))
+    
+    # Get recording duration for firing rate computation
+    recording_duration_us = sys_meta.get("recording_duration_s", 0) * 1e6
+    
+    def process_unit(item: Tuple[str, Dict[str, Any]]) -> Tuple[str, Dict[str, Any]]:
+        """Process a single unit: compute firing rate and convert spike_times."""
+        unit_id, unit_info = item
         spike_times = unit_info.get("spike_times")
+        
         if spike_times is not None and len(spike_times) > 0:
-            # Get recording duration from sys_meta or estimate
-            duration_us = sys_meta.get("recording_duration_s", 0) * 1e6
+            # Compute firing rate (using raw ns timestamps)
+            duration_us = recording_duration_us
             if duration_us == 0:
                 duration_us = spike_times[-1] + 1e6  # Add 1 second buffer
             
             unit_info["firing_rate_10hz"] = compute_firing_rate(
                 spike_times, duration_us, bin_rate_hz=10
             )
+            
+            # Convert spike_times from nanoseconds to sample indices
+            unit_info["spike_times"] = _convert_spike_times_to_samples(
+                spike_times, acquisition_rate
+            )
+        
+        return unit_id, unit_info
+    
+    # Process units in parallel with progress bar
+    if len(units_data) > 0:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_unit, item): item[0] 
+                      for item in units_data.items()}
+            
+            for future in tqdm(as_completed(futures), total=len(futures),
+                              desc="Processing units (firing rates + spike_times)", 
+                              unit="unit", leave=True):
+                unit_id, processed_info = future.result()
+                units_data[unit_id] = processed_info
     
     # Write to Zarr
     write_units(root, units_data)
@@ -540,27 +607,60 @@ def extract_features(
                 skipped.append(feature_name)
                 continue
             
-            # Extract for each unit
+            # Extract features in parallel, write sequentially (Windows zarr locking issue)
             stimulus_data = root["stimulus"]
             recording_metadata = root["metadata"] if "metadata" in root else None
             
+            # Use 80% of CPU cores for parallel extraction
+            cpu_count = os.cpu_count() or 4
+            max_workers = max(1, min(int(cpu_count * 0.8), len(unit_ids)))
+            
+            # Filter units that need extraction
+            units_to_extract = []
             for unit_id in unit_ids:
+                existing = list_features(root, unit_id)
+                if feature_name not in existing or force:
+                    units_to_extract.append(unit_id)
+            
+            if not units_to_extract:
+                logger.info(f"All units already have {feature_name} (cache hit)")
+                skipped.append(feature_name)
+                continue
+            
+            def extract_for_unit(unit_id: str) -> Tuple[str, Any, Optional[str]]:
+                """Extract feature for a single unit. Returns (unit_id, result, error_msg)."""
                 unit_data = root["units"][unit_id]
                 
-                # Check if this unit already has feature
-                existing = list_features(root, unit_id)
-                if feature_name in existing and not force:
-                    continue
-                
-                # Extract
                 try:
                     result = extractor.extract(
                         unit_data, stimulus_data, 
                         config=config_overrides,
                         metadata=recording_metadata
                     )
-                    
-                    # Write to Zarr
+                    return unit_id, result, None
+                except Exception as e:
+                    return unit_id, None, str(e)
+            
+            # Phase 1: Compute extractions in parallel
+            extraction_results: List[Tuple[str, Any, Optional[str]]] = []
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(extract_for_unit, uid): uid 
+                          for uid in units_to_extract}
+                
+                for future in tqdm(as_completed(futures), total=len(futures),
+                                  desc=f"Extracting {feature_name}", leave=False):
+                    extraction_results.append(future.result())
+            
+            # Phase 2: Write results sequentially (avoids Windows zarr locking)
+            for unit_id, result, error in tqdm(extraction_results, 
+                                               desc=f"Writing {feature_name}", leave=False):
+                if error:
+                    logger.error(f"Failed to extract {feature_name} for {unit_id}: {error}")
+                    warnings.append(f"Failed {feature_name} for {unit_id}: {error}")
+                    continue
+                
+                try:
                     feature_metadata = {
                         "feature_name": feature_name,
                         "extractor_version": extractor.version,
@@ -571,10 +671,9 @@ def extract_features(
                     write_feature_to_unit(
                         root, unit_id, feature_name, result, feature_metadata
                     )
-                    
                 except Exception as e:
-                    logger.error(f"Failed to extract {feature_name} for {unit_id}: {e}")
-                    warnings.append(f"Failed {feature_name} for {unit_id}: {e}")
+                    logger.error(f"Failed to write {feature_name} for {unit_id}: {e}")
+                    warnings.append(f"Failed to write {feature_name} for {unit_id}: {e}")
             
             extracted.append(feature_name)
             logger.info(f"Extracted feature: {feature_name}")

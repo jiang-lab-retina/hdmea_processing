@@ -129,16 +129,18 @@ def write_units(
         # Create unit group
         unit_group = units_group.create_group(unit_id, overwrite=True)
         
-        # Write spike times (in microseconds)
+        # Write spike times (in sample indices, converted from ns in runner.py)
         spike_times = unit_info.get("spike_times", np.array([]))
         if len(spike_times) > 0:
             spike_arr = spike_times.astype(np.uint64)
-            unit_group.create_dataset(
+            spike_ds = unit_group.create_dataset(
                 "spike_times",
                 data=spike_arr,
                 shape=spike_arr.shape,
                 dtype=np.uint64,
             )
+            # Add unit metadata attribute
+            spike_ds.attrs["unit"] = "sample_index"
         
         # Write waveform
         waveform = unit_info.get("waveform", np.array([]))
