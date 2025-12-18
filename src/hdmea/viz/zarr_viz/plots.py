@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "create_plot",
     "plot_1d",
+    "plot_1d_histogram",
     "plot_2d",
     "plot_nd",
     "export_figure",
@@ -45,6 +46,8 @@ def create_plot(
     title: Optional[str] = None,
     slice_indices: Optional[dict[int, int]] = None,
     sampled: bool = False,
+    plot_type: Literal["line", "histogram"] = "line",
+    acquisition_rate: Optional[float] = None,
 ) -> go.Figure:
     """Create appropriate plot based on array dimensions.
 
@@ -53,6 +56,8 @@ def create_plot(
         title: Plot title. If None, uses array info.
         slice_indices: For ND arrays, indices for dimensions > 2.
         sampled: Whether data was sampled (for title annotation).
+        plot_type: For 1D arrays, "line" for line plot or "histogram" for histogram.
+        acquisition_rate: Data acquisition rate in Hz (used for histogram bin calculation).
 
     Returns:
         Plotly Figure object.
@@ -77,9 +82,12 @@ def create_plot(
         raise UnsupportedArrayError("Cannot plot scalar (0-dimensional) array")
 
     elif ndim == 1:
-        # 1D array - line plot
+        # 1D array - line plot or histogram
         data = sample_array(array)
-        fig = plot_1d(data, title)
+        if plot_type == "histogram":
+            fig = plot_1d_histogram(data, title, acquisition_rate=acquisition_rate)
+        else:
+            fig = plot_1d(data, title)
         if sampled or len(data) < array.shape[0]:
             _add_sampled_annotation(fig, array.shape[0], len(data))
         return fig
@@ -144,6 +152,89 @@ def plot_1d(data: np.ndarray, title: str = "") -> go.Figure:
 
     # Enable zoom, pan, hover by default
     fig.update_xaxes(rangeslider_visible=False)
+
+    return fig
+
+
+def plot_1d_histogram(
+    data: np.ndarray, 
+    title: str = "", 
+    acquisition_rate: Optional[float] = None,
+) -> go.Figure:
+    """Create histogram for 1D data with 100 ms bins.
+
+    Args:
+        data: 1D numpy array.
+        title: Plot title.
+        acquisition_rate: Data acquisition rate in Hz. Used to calculate 
+                         bin width as acquisition_rate × 0.1 (100 ms worth of samples).
+
+    Returns:
+        Plotly Figure with histogram.
+    """
+    # Convert to float and handle NaN/Inf
+    data = np.asarray(data, dtype=np.float64)
+    data = data[np.isfinite(data)]  # Remove NaN and Inf values
+    
+    # Calculate bin width: acquisition_rate × 0.1 (100 ms in samples)
+    if acquisition_rate is not None and acquisition_rate > 0:
+        bin_width = acquisition_rate * 0.1  # 100 ms in samples
+    else:
+        # Fallback: use 50 bins if no acquisition rate available
+        bin_width = None
+    
+    # If no acquisition rate, calculate bin width from data range (fallback to ~50 bins)
+    if bin_width is None and len(data) > 0:
+        data_range = np.max(data) - np.min(data)
+        if data_range > 0:
+            bin_width = data_range / 50  # Approximate 50 bins as fallback
+        else:
+            bin_width = 1.0  # Default for constant data
+    
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Histogram(
+            x=data.tolist(),
+            xbins=dict(size=bin_width),
+            name="Data",
+            marker=dict(color="#1f77b4", line=dict(color="#0d47a1", width=1)),
+            hovertemplate="Range: %{x}<br>Count: %{y}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        title=dict(text=title, x=0.5, xanchor="center"),
+        xaxis_title="Value",
+        yaxis_title="Count",
+        template="plotly_white",
+        margin=dict(l=60, r=40, t=80, b=60),  # Extra top margin for annotation
+        bargap=0.05,
+    )
+
+    # Add bin width annotation
+    if acquisition_rate is not None and acquisition_rate > 0:
+        fig.add_annotation(
+            text=f"Bin width: {bin_width:.1f} (100 ms)",
+            xref="paper",
+            yref="paper",
+            x=1,
+            y=1.02,
+            showarrow=False,
+            font=dict(size=11, color="#666666"),
+            xanchor="right",
+        )
+    else:
+        fig.add_annotation(
+            text=f"Bin width: {bin_width:.4g} (auto, no acquisition rate)",
+            xref="paper",
+            yref="paper",
+            x=1,
+            y=1.02,
+            showarrow=False,
+            font=dict(size=11, color="#999999"),
+            xanchor="right",
+        )
 
     return fig
 

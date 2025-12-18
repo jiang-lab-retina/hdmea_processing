@@ -17,24 +17,24 @@ print("=" * 60)
 print("Running pipeline test...")
 print("=" * 60)
 
-# Provide external paths to raw files - MUST run to convert spike_times to sample indices
-result = load_recording(
-    cmcr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec.cmcr",
-    cmtr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec-.cmtr",
-    dataset_id="JIANG009_2025-04-10",
-    force=True,  # Force regeneration to apply spike_times conversion
-)
+# # Provide external paths to raw files - MUST run to convert spike_times to sample indices
+# result = load_recording(
+#     cmcr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec.cmcr",
+#     cmtr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec-.cmtr",
+#     dataset_id="JIANG009_2025-04-10",
+#     force=True,  # Force regeneration to apply spike_times conversion
+# )
 
 
-# Extract FRIF features
-print("\n" + "=" * 60)
-print("Extracting FRIF features...")
-print("=" * 60)
-extract_result = extract_features(
-    hdf5_path=result.hdf5_path,
-    features=["frif"],
-    force=True
-)
+# # Extract FRIF features
+# print("\n" + "=" * 60)
+# print("Extracting FRIF features...")
+# print("=" * 60)
+# extract_result = extract_features(
+#     hdf5_path=result.hdf5_path,
+#     features=["frif"],
+#     force=True
+# )
 
 
 add_section_time(

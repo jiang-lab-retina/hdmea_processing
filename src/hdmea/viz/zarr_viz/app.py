@@ -124,6 +124,8 @@ def init_session_state() -> None:
     if "browser_path" not in st.session_state:
         # Start in home directory or current working directory
         st.session_state.browser_path = str(Path.home())
+    if "plot_type" not in st.session_state:
+        st.session_state.plot_type = "line"  # "line" or "histogram"
 
 
 def add_to_recent_files(path: str, max_recent: int = 10) -> None:
@@ -810,10 +812,59 @@ def render_array_view(node: TreeNode) -> None:
                 st.text(f"Could not load sample: {e}")
             return
 
+        # For 1D arrays, show plot type toggle
+        is_1d = node.shape and len(node.shape) == 1
+        plot_type = "line"
+        
+        if is_1d:
+            st.markdown("**Plot Type**")
+            col_line, col_hist = st.columns(2)
+            with col_line:
+                if st.button(
+                    "📈 Line Plot",
+                    use_container_width=True,
+                    type="primary" if st.session_state.plot_type == "line" else "secondary",
+                ):
+                    st.session_state.plot_type = "line"
+                    st.rerun()
+            with col_hist:
+                if st.button(
+                    "📊 Histogram",
+                    use_container_width=True,
+                    type="primary" if st.session_state.plot_type == "histogram" else "secondary",
+                ):
+                    st.session_state.plot_type = "histogram"
+                    st.rerun()
+            plot_type = st.session_state.plot_type
+
+        # Get acquisition rate from /metadata/acquisition_rate dataset
+        acquisition_rate = None
+        try:
+            acq_handle, acq_data = _open_data_file(st.session_state.zarr_path, "metadata/acquisition_rate")
+            # Read the value from the dataset
+            acquisition_rate = float(np.asarray(acq_data)[()])
+            if acq_handle is not None:
+                acq_handle.close()
+        except Exception:
+            pass  # Dataset not found, continue without acquisition rate
+
+        # Show acquisition rate if found (for histogram binning)
+        if is_1d and plot_type == "histogram":
+            if acquisition_rate is not None:
+                st.caption(f"📊 Using acquisition rate: {acquisition_rate:.0f} Hz → bin width: {acquisition_rate * 0.1:.1f} (100 ms)")
+            else:
+                st.caption("⚠️ No acquisition_rate found in file attributes")
+
         # Generate plot
         try:
             title = f"{node.path}\nShape: {node.shape}, Type: {node.dtype}"
-            fig = create_plot(array, title=title, slice_indices=slice_indices)
+            fig = create_plot(
+                array, 
+                title=title, 
+                slice_indices=slice_indices, 
+                plot_type=plot_type,
+                acquisition_rate=acquisition_rate,
+            )
 
             # Display interactive plot
             st.plotly_chart(fig, use_container_width=True, config={

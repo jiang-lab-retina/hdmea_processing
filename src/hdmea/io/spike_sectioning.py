@@ -2,8 +2,8 @@
 Spike times sectioning module for HD-MEA pipeline.
 
 Provides functionality to section spike timestamps by stimulation periods
-(trials) defined in section_time data. Supports both combined (full_spike_times)
-and per-trial (trials_spike_times) storage formats.
+(trials) defined in section_time data. Stores combined full_spike_times
+(all trials merged).
 
 Example:
     >>> from hdmea.io.spike_sectioning import section_spike_times
@@ -76,7 +76,7 @@ def _section_unit_spikes(
     trial_repeats: int = 3,
     pre_samples: int = 0,
     post_samples: int = 0,
-) -> Tuple[np.ndarray, Dict[int, np.ndarray]]:
+) -> np.ndarray:
     """
     Extract spikes within padded trial boundaries for a single unit.
     
@@ -88,21 +88,15 @@ def _section_unit_spikes(
         post_samples: Padding in samples to extend after trial end.
     
     Returns:
-        Tuple of:
-            - full_spike_times: All spikes from all processed trials (sorted, unique).
-            - trials_spike_times: Dict mapping trial_idx -> spike array.
+        full_spike_times: All spikes from all processed trials (sorted, unique).
     
     Note:
         Padded boundaries are clamped: start >= 0, end <= max(spike_times).
     """
     # Handle empty spike_times
     if len(spike_times) == 0:
-        empty_array = np.array([], dtype=np.int64)
-        n_trials = min(trial_repeats, len(section_time))
-        trials_dict = {i: empty_array.copy() for i in range(n_trials)}
-        return empty_array, trials_dict
+        return np.array([], dtype=np.int64)
     
-    trials_spikes = {}
     trial_arrays = []
     
     n_trials = min(trial_repeats, len(section_time))
@@ -118,8 +112,6 @@ def _section_unit_spikes(
         mask = (spike_times >= padded_start) & (spike_times < padded_end)
         trial_spikes = spike_times[mask].astype(np.int64)
         
-        # Store per-trial
-        trials_spikes[trial_idx] = trial_spikes
         trial_arrays.append(trial_spikes)
     
     # Combine all trials efficiently using numpy concatenation
@@ -129,14 +121,13 @@ def _section_unit_spikes(
     else:
         full_spike_times = np.array([], dtype=np.int64)
     
-    return full_spike_times, trials_spikes
+    return full_spike_times
 
 
 def _write_sectioned_spikes(
     unit_group: h5py.Group,
     movie_name: str,
     full_spike_times: np.ndarray,
-    trials_spike_times: Dict[int, np.ndarray],
     pad_margin: Tuple[float, float],
     pre_samples: int,
     post_samples: int,
@@ -149,16 +140,11 @@ def _write_sectioned_spikes(
     Creates structure:
         spike_times_sectioned/{movie_name}/
             full_spike_times          # All trials combined
-            trials_spike_times/
-                0                     # Trial 0 spikes
-                1                     # Trial 1 spikes
-                ...
     
     Args:
         unit_group: HDF5 group for the unit (units/{unit_id}).
         movie_name: Name of the movie/stimulus.
         full_spike_times: All spikes from all trials (sorted).
-        trials_spike_times: Dict mapping trial_idx -> spike array.
         pad_margin: Tuple of (pre_margin_s, post_margin_s) in seconds.
         pre_samples: Pre-margin in samples.
         post_samples: Post-margin in samples.
@@ -208,15 +194,7 @@ def _write_sectioned_spikes(
     # Write full_spike_times array
     movie_group.create_dataset("full_spike_times", data=full_spike_times, dtype=np.int64)
     
-    # Create trials_spike_times group
-    trials_group = movie_group.create_group("trials_spike_times")
-    
-    # Write per-trial arrays
-    for trial_idx, trial_spikes in trials_spike_times.items():
-        trials_group.create_dataset(str(trial_idx), data=trial_spikes, dtype=np.int64)
-    
     # Write metadata attributes
-    movie_group.attrs["n_trials"] = len(trials_spike_times)
     movie_group.attrs["trial_repeats"] = trial_repeats
     movie_group.attrs["pad_margin"] = list(pad_margin)
     movie_group.attrs["pre_samples"] = pre_samples
@@ -240,9 +218,8 @@ def section_spike_times(
     Section spike times by stimulation periods defined in section_time.
     
     For each unit in the HDF5 file, extracts spikes falling within
-    trial periods (with optional padding) and stores them in TWO formats:
+    trial periods (with optional padding) and stores them as:
     - `full_spike_times`: All spikes from all trials combined
-    - `trials_spike_times/{idx}`: Spikes per trial based on section_time boundaries
     
     Args:
         hdf5_path: Path to HDF5 file containing recording data.
@@ -413,8 +390,8 @@ def section_spike_times(
     units_processed = 0
     movies_actually_processed: set = set()
     
-    # Data structure to hold computed results: {unit_id: {movie_name: (full_spikes, trials_spikes)}}
-    ComputedData = Dict[str, Tuple[np.ndarray, Dict[int, np.ndarray]]]
+    # Data structure to hold computed results: {unit_id: {movie_name: full_spikes}}
+    ComputedData = Dict[str, np.ndarray]
     computed_results: Dict[str, Tuple[ComputedData, List[str]]] = {}
     
     def compute_unit_sections(unit_id: str) -> Tuple[str, ComputedData, List[str]]:
@@ -435,7 +412,7 @@ def section_spike_times(
                 unit_warnings.append(f"Movie {movie_name} has no trials in section_time")
                 continue
             
-            full_spike_times, trials_spike_times = _section_unit_spikes(
+            full_spike_times = _section_unit_spikes(
                 spike_times=spike_times,
                 section_time=section_time,
                 trial_repeats=trial_repeats,
@@ -443,7 +420,7 @@ def section_spike_times(
                 post_samples=post_samples,
             )
             
-            unit_data[movie_name] = (full_spike_times, trials_spike_times)
+            unit_data[movie_name] = full_spike_times
         
         return unit_id, unit_data, unit_warnings
     
@@ -474,12 +451,11 @@ def section_spike_times(
         unit_group = units_group[unit_id]
         
         try:
-            for movie_name, (full_spike_times, trials_spike_times) in unit_data.items():
+            for movie_name, full_spike_times in unit_data.items():
                 _write_sectioned_spikes(
                     unit_group=unit_group,
                     movie_name=movie_name,
                     full_spike_times=full_spike_times,
-                    trials_spike_times=trials_spike_times,
                     pad_margin=pad_margin,
                     pre_samples=pre_samples,
                     post_samples=post_samples,
