@@ -1,7 +1,7 @@
 """
-Metadata display formatting for zarr_viz module.
+Metadata display formatting for zarr_viz module (HDF5 compatible).
 
-Provides functions for formatting zarr attributes and array properties
+Provides functions for formatting HDF5/zarr attributes and array properties
 for display in the UI.
 """
 
@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Mapping, TYPE_CHECKING
+from typing import Any, Mapping, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    import zarr
+    import h5py
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +23,11 @@ __all__ = [
 ]
 
 
-def format_array_info(array: "zarr.Array") -> dict[str, Any]:
-    """Format array metadata for display.
+def format_array_info(array) -> dict[str, Any]:
+    """Format array/dataset metadata for display.
 
     Args:
-        array: Zarr array object.
+        array: HDF5 dataset or Zarr array object.
 
     Returns:
         Dict with formatted metadata fields.
@@ -35,64 +35,95 @@ def format_array_info(array: "zarr.Array") -> dict[str, Any]:
     info = {
         "Shape": str(array.shape),
         "Data Type": str(array.dtype),
-        "Chunks": str(array.chunks) if array.chunks else "Not chunked",
     }
-
-    # Add size info
-    if hasattr(array, "nbytes") and array.nbytes:
-        size_bytes = array.nbytes
-        if size_bytes < 1024:
-            info["Size"] = f"{size_bytes} bytes"
-        elif size_bytes < 1024 * 1024:
-            info["Size"] = f"{size_bytes / 1024:.2f} KB"
-        elif size_bytes < 1024 * 1024 * 1024:
-            info["Size"] = f"{size_bytes / (1024 * 1024):.2f} MB"
-        else:
-            info["Size"] = f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
-
-    # Add compression info if available (handle Zarr v2 vs v3 API)
+    
+    # Chunks - different attribute access for HDF5 vs Zarr
     try:
-        # Zarr v3 uses compressors (plural)
-        if hasattr(array, "compressors") and array.compressors:
-            info["Compressor"] = str(array.compressors)
-        # Zarr v2 uses compressor (singular)
+        if hasattr(array, "chunks") and array.chunks:
+            info["Chunks"] = str(array.chunks)
+        else:
+            info["Chunks"] = "Not chunked"
+    except Exception:
+        info["Chunks"] = "Unknown"
+
+    # Add size info - HDF5 uses id.get_storage_size(), Zarr uses nbytes
+    try:
+        size_bytes = None
+        if hasattr(array, 'id') and hasattr(array.id, 'get_storage_size'):
+            # HDF5 dataset
+            size_bytes = array.id.get_storage_size()
+        elif hasattr(array, 'nbytes'):
+            # Zarr array
+            size_bytes = array.nbytes
+            
+        if size_bytes:
+            if size_bytes < 1024:
+                info["Size"] = f"{size_bytes} bytes"
+            elif size_bytes < 1024 * 1024:
+                info["Size"] = f"{size_bytes / 1024:.2f} KB"
+            elif size_bytes < 1024 * 1024 * 1024:
+                info["Size"] = f"{size_bytes / (1024 * 1024):.2f} MB"
+            else:
+                info["Size"] = f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+    except Exception:
+        pass
+
+    # Add compression info if available
+    try:
+        if hasattr(array, "compression") and array.compression:
+            info["Compression"] = str(array.compression)
+            if hasattr(array, "compression_opts") and array.compression_opts:
+                info["Compression Level"] = str(array.compression_opts)
         elif hasattr(array, "compressor") and array.compressor:
-            info["Compressor"] = str(array.compressor)
-    except (TypeError, AttributeError):
-        # Zarr v3 raises TypeError when accessing compressor
+            # Zarr uses compressor attribute
+            info["Compression"] = str(array.compressor)
+    except Exception:
         pass
 
     # Add fill value if set
-    if hasattr(array, "fill_value") and array.fill_value is not None:
-        info["Fill Value"] = str(array.fill_value)
+    try:
+        if hasattr(array, "fillvalue") and array.fillvalue is not None:
+            info["Fill Value"] = str(array.fillvalue)
+        elif hasattr(array, "fill_value") and array.fill_value is not None:
+            # Zarr uses fill_value
+            info["Fill Value"] = str(array.fill_value)
+    except Exception:
+        pass
 
     return info
 
 
-def format_group_info(group: "zarr.Group") -> dict[str, Any]:
+def format_group_info(group) -> dict[str, Any]:
     """Format group metadata for display.
 
     Args:
-        group: Zarr group object.
+        group: HDF5 group/file or Zarr group object.
 
     Returns:
         Dict with formatted metadata fields.
     """
     info = {}
 
-    # Count children
+    # Count children - works for both HDF5 and Zarr
     try:
         num_groups = 0
         num_arrays = 0
+        
         for name in group.keys():
             child = group[name]
-            if hasattr(child, "shape"):
-                num_arrays += 1
+            # Check if it's an array/dataset
+            if hasattr(child, 'shape') and hasattr(child, 'dtype'):
+                # Has array-like properties
+                if not hasattr(child, 'keys'):
+                    # It's a leaf node (array/dataset)
+                    num_arrays += 1
+                else:
+                    num_groups += 1
             else:
                 num_groups += 1
 
         info["Groups"] = str(num_groups)
-        info["Arrays"] = str(num_arrays)
+        info["Datasets"] = str(num_arrays)
         info["Total Children"] = str(num_groups + num_arrays)
     except Exception as e:
         logger.warning(f"Failed to count children: {e}")

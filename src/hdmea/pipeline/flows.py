@@ -44,9 +44,9 @@ def run_flow(
         cmcr_path: External path to .cmcr file.
         cmtr_path: External path to .cmtr file.
         dataset_id: Unique identifier for the recording.
-        output_dir: Directory for Zarr output.
+        output_dir: Directory for HDF5 output.
         config_dir: Directory containing flow configs.
-        force_load: Force re-run of Stage 1 even if Zarr exists.
+        force_load: Force re-run of Stage 1 even if HDF5 exists.
         force_extract: Force re-extraction of features even if cached.
     
     Returns:
@@ -80,12 +80,12 @@ def run_flow(
             force=force_load,
             config=flow_config.defaults,
         )
-        zarr_path = load_result.zarr_path
+        hdf5_path = load_result.hdf5_path
     else:
-        # Assume Zarr already exists
+        # Assume HDF5 already exists
         output_dir = Path(output_dir)
         if dataset_id:
-            zarr_path = output_dir / f"{dataset_id}.zarr"
+            hdf5_path = output_dir / f"{dataset_id}.h5"
         else:
             raise ValueError("dataset_id required when load stage is disabled")
     
@@ -96,7 +96,7 @@ def run_flow(
     if feature_sets:
         logger.info(f"Running Stage 2: Extracting {len(feature_sets)} feature sets")
         extraction_result = extract_features(
-            zarr_path=zarr_path,
+            hdf5_path=hdf5_path,
             features=feature_sets,
             force=force_extract,
             config_overrides=flow_config.defaults,
@@ -113,7 +113,7 @@ def run_flow(
     logger.info(f"Flow '{flow_name}' completed: success={success}")
     
     return FlowResult(
-        zarr_path=zarr_path,
+        hdf5_path=hdf5_path,
         load_result=load_result,
         extraction_result=extraction_result,
         success=success,

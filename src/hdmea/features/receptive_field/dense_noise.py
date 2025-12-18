@@ -8,9 +8,8 @@ import logging
 from typing import Any, Dict, Optional
 
 import numpy as np
-import zarr
 
-from hdmea.features.base import FeatureExtractor
+from hdmea.features.base import FeatureExtractor, HDF5Group
 from hdmea.features.registry import FeatureRegistry
 
 
@@ -51,10 +50,10 @@ class DenseNoiseFeatureExtractor(FeatureExtractor):
     
     def extract(
         self,
-        unit_data: zarr.Group,
-        stimulus_data: zarr.Group,
+        unit_data: HDF5Group,
+        stimulus_data: HDF5Group,
         config: Optional[Dict[str, Any]] = None,
-        metadata: Optional[zarr.Group] = None,
+        metadata: Optional[HDF5Group] = None,
     ) -> Dict[str, Any]:
         """
         Extract receptive field features.

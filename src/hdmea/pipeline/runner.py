@@ -17,9 +17,9 @@ from tqdm import tqdm
 
 from hdmea.io.cmcr import load_cmcr_data
 from hdmea.io.cmtr import load_cmtr_data, validate_cmcr_cmtr_match
-from hdmea.io.zarr_store import (
-    create_recording_zarr,
-    open_recording_zarr,
+from hdmea.io.hdf5_store import (
+    create_recording_hdf5,
+    open_recording_hdf5,
     write_units,
     write_stimulus,
     write_metadata,
@@ -199,7 +199,7 @@ def get_frame_timestamps(
 @dataclass
 class LoadResult:
     """Result of Stage 1 data loading."""
-    zarr_path: Path
+    hdf5_path: Path
     dataset_id: str
     num_units: int
     stage1_completed: bool
@@ -209,7 +209,7 @@ class LoadResult:
 @dataclass
 class ExtractionResult:
     """Result of Stage 2 feature extraction."""
-    zarr_path: Path
+    hdf5_path: Path
     features_extracted: List[str] = field(default_factory=list)
     features_skipped: List[str] = field(default_factory=list)
     features_failed: List[str] = field(default_factory=list)
@@ -219,7 +219,7 @@ class ExtractionResult:
 @dataclass
 class FlowResult:
     """Result of running a complete flow."""
-    zarr_path: Path
+    hdf5_path: Path
     load_result: Optional[LoadResult] = None
     extraction_result: Optional[ExtractionResult] = None
     success: bool = False
@@ -240,9 +240,9 @@ def load_recording(
     config: Optional[Dict[str, Any]] = None,
 ) -> LoadResult:
     """
-    Load recording from external .cmcr/.cmtr files to Zarr artifact.
+    Load recording from external .cmcr/.cmtr files to HDF5 artifact.
     
-    This is Stage 1 of the pipeline. Produces exactly ONE Zarr archive
+    This is Stage 1 of the pipeline. Produces exactly ONE HDF5 file
     per recording containing all data needed for feature extraction.
     
     Timing Metadata:
@@ -256,19 +256,19 @@ def load_recording(
            valid rate, and logs a warning.
         
         The frame_time (seconds per sample) is computed as 1/acquisition_rate.
-        Both values are stored in the Zarr metadata group.
+        Both values are stored in the HDF5 metadata group.
     
     Args:
         cmcr_path: External path to .cmcr file (raw sensor data).
         cmtr_path: External path to .cmtr file (spike-sorted data).
         dataset_id: Unique identifier for the recording.
-        output_dir: Directory for Zarr output. Default: "artifacts".
-        force: If True, overwrite existing Zarr. Default: False.
-        allow_overwrite: If True, allow overwriting existing Zarr even if params differ. Default: False.
+        output_dir: Directory for HDF5 output. Default: "artifacts".
+        force: If True, overwrite existing HDF5. Default: False.
+        allow_overwrite: If True, allow overwriting existing HDF5 even if params differ. Default: False.
         config: Optional configuration dictionary.
     
     Returns:
-        LoadResult with zarr_path, dataset_id, unit count, and warnings.
+        LoadResult with hdf5_path, dataset_id, unit count, and warnings.
     
     Raises:
         ConfigurationError: If neither cmcr_path nor cmtr_path provided.
@@ -281,11 +281,10 @@ def load_recording(
         ...     cmtr_path="path/to/recording.cmtr",
         ...     dataset_id="REC_2023-12-07",
         ... )
-        >>> # Access timing metadata from the created Zarr:
-        >>> import zarr
-        >>> root = zarr.open(str(result.zarr_path), mode="r")
-        >>> acquisition_rate = root["metadata"].attrs["acquisition_rate"]  # Hz
-        >>> frame_time = root["metadata"].attrs["frame_time"]  # seconds
+        >>> # Access timing metadata from the created HDF5:
+        >>> import h5py
+        >>> with h5py.File(str(result.hdf5_path), mode="r") as f:
+        ...     acquisition_rate = f["metadata/acquisition_rate"][0]  # Hz
     """
     warnings = []
     config = config or {}
@@ -312,36 +311,36 @@ def load_recording(
     # Prepare output path
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    zarr_path = output_dir / f"{dataset_id}.zarr"
+    hdf5_path = output_dir / f"{dataset_id}.h5"
     
-    # Check for existing Zarr (caching)
-    if zarr_path.exists() and not overwrite:
-        root = open_recording_zarr(zarr_path, mode="r")
-        status = get_stage1_status(root)
-        
-        if status["completed"]:
-            # Check if params match
-            if verify_hash(config, status["params_hash"]):
-                logger.info(f"Cache hit: {zarr_path} already exists with matching params")
-                num_units = len(list_units(root))
-                return LoadResult(
-                    zarr_path=zarr_path,
-                    dataset_id=dataset_id,
-                    num_units=num_units,
-                    stage1_completed=True,
-                    warnings=["Using cached Zarr (skipped loading)"],
-                )
-            else:
-                logger.warning("Zarr exists but params differ. Use force=True or allow_overwrite=True to overwrite.")
-                raise FileExistsError(
-                    f"Zarr already exists with different params: {zarr_path}. "
-                    "Use force=True or allow_overwrite=True to overwrite."
-                )
+    # Check for existing HDF5 (caching)
+    if hdf5_path.exists() and not overwrite:
+        with open_recording_hdf5(hdf5_path, mode="r") as root:
+            status = get_stage1_status(root)
+            
+            if status["completed"]:
+                # Check if params match
+                if verify_hash(config, status["params_hash"]):
+                    logger.info(f"Cache hit: {hdf5_path} already exists with matching params")
+                    num_units = len(list_units(root))
+                    return LoadResult(
+                        hdf5_path=hdf5_path,
+                        dataset_id=dataset_id,
+                        num_units=num_units,
+                        stage1_completed=True,
+                        warnings=["Using cached HDF5 (skipped loading)"],
+                    )
+                else:
+                    logger.warning("HDF5 exists but params differ. Use force=True or allow_overwrite=True to overwrite.")
+                    raise FileExistsError(
+                        f"HDF5 already exists with different params: {hdf5_path}. "
+                        "Use force=True or allow_overwrite=True to overwrite."
+                    )
     
-    # Create new Zarr
-    logger.info(f"Creating new Zarr: {zarr_path}")
-    root = create_recording_zarr(
-        zarr_path,
+    # Create new HDF5
+    logger.info(f"Creating new HDF5: {hdf5_path}")
+    root = create_recording_hdf5(
+        hdf5_path,
         dataset_id=dataset_id,
         config=config,
         overwrite=overwrite,
@@ -504,10 +503,13 @@ def load_recording(
     # Mark complete
     mark_stage1_complete(root)
     
-    logger.info(f"Stage 1 complete: {len(units_data)} units loaded to {zarr_path}")
+    # Close the HDF5 file
+    root.close()
+    
+    logger.info(f"Stage 1 complete: {len(units_data)} units loaded to {hdf5_path}")
     
     return LoadResult(
-        zarr_path=zarr_path,
+        hdf5_path=hdf5_path,
         dataset_id=dataset_id,
         num_units=len(units_data),
         stage1_completed=True,
@@ -520,20 +522,20 @@ def load_recording(
 # =============================================================================
 
 def extract_features(
-    zarr_path: Union[str, Path],
+    hdf5_path: Union[str, Path],
     features: List[str],
     *,
     force: bool = False,
     config_overrides: Optional[Dict[str, Any]] = None,
 ) -> ExtractionResult:
     """
-    Extract features from loaded Zarr and write back to same archive.
+    Extract features from loaded HDF5 and write back to same archive.
     
-    This is Stage 2 of the pipeline. Reads from Zarr, computes features
+    This is Stage 2 of the pipeline. Reads from HDF5, computes features
     for each unit, and writes results to units/{unit_id}/features/{feature_name}/.
     
     Args:
-        zarr_path: Path to Zarr archive from Stage 1.
+        hdf5_path: Path to HDF5 file from Stage 1.
         features: List of feature names to extract (must be registered).
         force: If True, overwrite existing features. Default: False.
         config_overrides: Optional parameter overrides for extractors.
@@ -542,34 +544,36 @@ def extract_features(
         ExtractionResult with lists of extracted, skipped, and failed features.
     
     Raises:
-        FileNotFoundError: If zarr_path does not exist.
+        FileNotFoundError: If hdf5_path does not exist.
         KeyError: If any feature name is not registered.
         MissingInputError: If required inputs for a feature are missing.
     """
     from hdmea.features.registry import FeatureRegistry
     
-    zarr_path = Path(zarr_path)
+    hdf5_path = Path(hdf5_path)
     warnings = []
     extracted = []
     skipped = []
     failed = []
     
-    # Open Zarr
-    root = open_recording_zarr(zarr_path, mode="r+")
+    # Open HDF5
+    root = open_recording_hdf5(hdf5_path, mode="r+")
     
     # Validate Stage 1 is complete
     status = get_stage1_status(root)
     if not status["completed"]:
+        root.close()
         raise ConfigurationError(
-            f"Stage 1 not complete for {zarr_path}. Run load_recording first."
+            f"Stage 1 not complete for {hdf5_path}. Run load_recording first."
         )
     
     # Get unit list
     unit_ids = list_units(root)
     if not unit_ids:
-        warnings.append("No units found in Zarr")
+        warnings.append("No units found in HDF5")
+        root.close()
         return ExtractionResult(
-            zarr_path=zarr_path,
+            hdf5_path=hdf5_path,
             features_extracted=extracted,
             features_skipped=skipped,
             features_failed=failed,
@@ -694,8 +698,11 @@ def extract_features(
     # Update timestamp
     root.attrs["updated_at"] = datetime.now(timezone.utc).isoformat()
     
+    # Close the HDF5 file
+    root.close()
+    
     return ExtractionResult(
-        zarr_path=zarr_path,
+        hdf5_path=hdf5_path,
         features_extracted=extracted,
         features_skipped=skipped,
         features_failed=failed,

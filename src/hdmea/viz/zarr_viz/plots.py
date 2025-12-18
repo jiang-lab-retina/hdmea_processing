@@ -1,8 +1,8 @@
 """
-Plot generation for zarr_viz module.
+Plot generation for zarr_viz module (HDF5 compatible).
 
 Provides functions for creating interactive Plotly visualizations
-of zarr array data.
+of HDF5 dataset and zarr array data.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import io
 import logging
 from pathlib import Path
-from typing import Literal, Optional, TYPE_CHECKING
+from typing import Literal, Optional, TYPE_CHECKING, Union
 
 import numpy as np
 import plotly.graph_objects as go
@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 from hdmea.viz.zarr_viz.utils import sample_array, should_warn_large, UnsupportedArrayError
 
 if TYPE_CHECKING:
-    import zarr
+    import h5py
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,9 @@ __all__ = [
     "get_plot_bytes",
 ]
 
+# Type alias for array-like objects
+ArrayLike = Union["h5py.Dataset", np.ndarray]
+
 
 # =============================================================================
 # Main Plot Dispatcher
@@ -38,7 +41,7 @@ __all__ = [
 
 
 def create_plot(
-    array: "zarr.Array",
+    array: ArrayLike,
     title: Optional[str] = None,
     slice_indices: Optional[dict[int, int]] = None,
     sampled: bool = False,
@@ -46,7 +49,7 @@ def create_plot(
     """Create appropriate plot based on array dimensions.
 
     Args:
-        array: Zarr array to plot.
+        array: HDF5 dataset or numpy array to plot.
         title: Plot title. If None, uses array info.
         slice_indices: For ND arrays, indices for dimensions > 2.
         sampled: Whether data was sampled (for title annotation).
@@ -201,7 +204,7 @@ def plot_2d(data: np.ndarray, title: str = "") -> go.Figure:
 
 
 def plot_nd(
-    array: "zarr.Array",
+    array: ArrayLike,
     title: str = "",
     slice_indices: Optional[dict[int, int]] = None,
 ) -> go.Figure:
@@ -211,7 +214,7 @@ def plot_nd(
     array to 2D using the provided indices for extra dimensions.
 
     Args:
-        array: ND zarr array (ndim > 2).
+        array: ND HDF5 dataset or numpy array (ndim > 2).
         title: Plot title.
         slice_indices: Dict mapping dimension index to slice position.
                       Dimensions 0 and 1 are used for the 2D plot.

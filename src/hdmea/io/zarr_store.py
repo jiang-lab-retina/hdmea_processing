@@ -1,8 +1,22 @@
 """
 Zarr store operations for HD-MEA pipeline.
 
+.. deprecated::
+    This module is deprecated as of version 0.2.0. Use :mod:`hdmea.io.hdf5_store` instead.
+    Zarr support is kept for reading legacy archives during the transition period.
+    New pipelines should use HDF5 format exclusively.
+
 Handles reading and writing of Zarr archives that store recording data and features.
 """
+
+import warnings
+
+warnings.warn(
+    "hdmea.io.zarr_store is deprecated as of version 0.2.0. "
+    "Use hdmea.io.hdf5_store instead. Zarr support is kept only for legacy archive reading.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import json
 import logging

@@ -1,18 +1,22 @@
 <!--
   Sync Impact Report
   ==================
-  Version change: 1.0.0 → 1.1.0
-  Modified principles: None
-  Added sections:
-    - "Pipeline Documentation Rules" under Documentation Rules
+  Version change: 1.1.0 → 1.2.0
+  Modified principles:
+    - IV. "Single Zarr Artifact" → "Single HDF5 Artifact" (format change)
+    - V. Data Format Standards: Zarr → HDF5 for hierarchical data
+  Added sections: None
   Removed sections: None
+  Rationale: HDF5 provides better cross-platform tooling compatibility (HDFView, MATLAB)
+             while maintaining the same logical data structure. Single-file format
+             simplifies file management compared to Zarr directories.
   Templates requiring updates:
-    - ✅ `.specify/templates/plan-template.md` - no changes needed (documentation is independent)
+    - ✅ `.specify/templates/plan-template.md` - no changes needed
     - ✅ `.specify/templates/spec-template.md` - no changes needed
     - ✅ `.specify/templates/tasks-template.md` - no changes needed
   Follow-up TODOs:
-    - Create initial `docs/pipeline_explained.md` with current pipeline flow
-    - Create initial `docs/pipeline_log.md` with header structure
+    - Update test fixtures to use .h5 instead of .zarr
+    - Update artifact storage docs to reference HDF5
 -->
 
 # HD-MEA Data Analysis Pipeline Constitution
@@ -60,7 +64,7 @@ The package MUST follow this subpackage structure:
 ```
 src/hdmea/
 ├── __init__.py
-├── io/              # CMCR/CMTR loading, artifact read/write, Zarr operations
+├── io/              # CMCR/CMTR loading, artifact read/write, HDF5 operations
 ├── preprocess/      # Alignment, filtering, QC, data cleaning
 ├── features/        # Feature extractors, registry, feature schemas
 ├── analysis/        # Downstream analyses (clustering, statistics, etc.)
@@ -100,21 +104,23 @@ io → preprocess → features → analysis → viz
 
 ---
 
-### IV. Single Zarr Artifact Per Recording
+### IV. Single HDF5 Artifact Per Recording
 
 In the preprocessing stage:
 
-- One `.cmcr` and/or `.cmtr` file MUST produce exactly **one Zarr archive** containing all
+- One `.cmcr` and/or `.cmtr` file MUST produce exactly **one HDF5 file** (`.h5`) containing all
   information needed for downstream processing.
-- The Zarr archive MUST include:
+- The HDF5 file MUST include:
   - Raw or minimally processed spike data
   - Stimulus information and timing
   - Metadata (recording parameters, electrode layout, etc.)
   - QC flags and alignment results
-- Downstream stages (features, analysis) MUST consume Zarr artifacts, NOT raw `.cmcr`/`.cmtr` files.
+- Downstream stages (features, analysis) MUST consume HDF5 artifacts, NOT raw `.cmcr`/`.cmtr` files.
+- HDF5 files MUST use single-writer access model (no concurrent writes).
 
 **Rationale**: A single, self-contained artifact per recording simplifies caching, sharing, and
-ensures preprocessing runs exactly once.
+ensures preprocessing runs exactly once. HDF5 provides broad cross-platform compatibility
+(h5py, HDFView, MATLAB) and single-file storage for easier file management.
 
 ---
 
@@ -123,12 +129,13 @@ ensures preprocessing runs exactly once.
 | Data Type | Format | Notes |
 |-----------|--------|-------|
 | Tabular data (feature tables, metadata) | **Parquet** | Portable, typed, efficient |
-| Nested/hierarchical data (spike trains, recordings) | **Zarr** | Chunked, lazy-loadable |
+| Nested/hierarchical data (spike trains, recordings) | **HDF5** | Single-file, lazy-loadable, cross-platform |
 | Configuration and parameters | **JSON** | Human-readable, versionable |
-| Internal intermediates (temporary) | PKL | Only when Zarr/Parquet impractical; must be documented |
+| Internal intermediates (temporary) | PKL | Only when HDF5/Parquet impractical; must be documented |
 
 - PKL files MUST NOT be the primary artifact format for any pipeline stage.
 - All artifact files MUST include version metadata in their structure or companion JSON.
+- HDF5 files MUST use `.h5` extension and store metadata as HDF5 attributes.
 
 ---
 
@@ -266,9 +273,9 @@ Every notebook MUST include YAML front matter (in the paired `.py` file) or note
 ```
 artifacts/                    # Gitignored
 ├── raw/                      # Downloaded/copied raw data (.cmcr, .cmtr)
-├── preprocessed/             # Zarr archives from preprocessing
+├── preprocessed/             # HDF5 files from preprocessing (.h5)
 ├── features/                 # Parquet feature tables
-├── analysis/                 # Analysis outputs (Parquet, Zarr)
+├── analysis/                 # Analysis outputs (Parquet, HDF5)
 ├── viz/                      # Generated figures (PNG, SVG, PDF)
 └── cache/                    # Intermediate cache objects
 ```
@@ -287,7 +294,7 @@ Every pipeline artifact MUST include metadata with:
 
 Metadata MUST be stored:
 
-- For Zarr: in `.zattrs` at the root level
+- For HDF5: as attributes on the root group (accessible via `f.attrs`)
 - For Parquet: in file metadata or companion `.meta.json`
 - For JSON configs: inline in the JSON structure
 
@@ -391,7 +398,7 @@ class OnOffIndexExtractor(FeatureExtractor):
 ### Analysis Requirements
 
 - Analyses MUST consume standardized feature tables (Parquet) + metadata artifacts.
-- Analyses MUST NOT directly load raw recordings (consume preprocessed Zarr).
+- Analyses MUST NOT directly load raw recordings (consume preprocessed HDF5).
 - Analyses MUST be deterministic: given fixed inputs and explicit random seed, outputs are identical.
 - Random seeds MUST be passed as explicit parameters, not set globally.
 
@@ -436,7 +443,7 @@ def plot_receptive_field(
 - Unit tests MUST use small, synthetic inputs (not real recordings).
 - A `tests/fixtures/` directory MUST contain:
   - Synthetic spike train generators
-  - Minimal Zarr archives for testing
+  - Minimal HDF5 files for testing
   - Expected output fixtures for regression testing
 
 ### Minimum Test Requirements
@@ -604,4 +611,4 @@ When amending this constitution:
 
 ---
 
-**Version**: 1.1.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-16
+**Version**: 1.2.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-17

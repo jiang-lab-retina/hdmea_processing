@@ -1,30 +1,33 @@
 """
-Shared utilities for zarr_viz module.
+Shared utilities for zarr_viz module (now supports HDF5).
 
 Provides functions for memory management, array sampling, and size estimation.
+Supports both HDF5 files (.h5) and legacy Zarr archives (.zarr).
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 
 if TYPE_CHECKING:
-    import zarr
+    import h5py
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "ZarrVizError",
     "InvalidZarrPathError",
+    "InvalidHDF5PathError",
     "UnsupportedArrayError",
     "sample_array",
     "should_warn_large",
     "estimate_memory",
     "validate_zarr_path",
+    "validate_hdf5_path",
 ]
 
 
@@ -45,6 +48,12 @@ class InvalidZarrPathError(ZarrVizError):
     pass
 
 
+class InvalidHDF5PathError(ZarrVizError):
+    """Raised when HDF5 path is invalid or inaccessible."""
+
+    pass
+
+
 class UnsupportedArrayError(ZarrVizError):
     """Raised when array cannot be visualized (e.g., non-numeric)."""
 
@@ -57,7 +66,7 @@ class UnsupportedArrayError(ZarrVizError):
 
 
 def sample_array(
-    array: "zarr.Array",
+    array: Union["h5py.Dataset", np.ndarray],
     max_elements: int = 10_000_000,
 ) -> np.ndarray:
     """Sample large array to fit in memory.
@@ -66,7 +75,7 @@ def sample_array(
     axis to reduce the total number of elements.
 
     Args:
-        array: Zarr array to sample from.
+        array: HDF5 dataset or NumPy array to sample from.
         max_elements: Maximum number of elements to load (default 10M).
 
     Returns:
@@ -95,13 +104,13 @@ def sample_array(
 
 
 def should_warn_large(
-    array: "zarr.Array",
+    array: Union["h5py.Dataset", np.ndarray],
     threshold_mb: int = 100,
 ) -> bool:
     """Check if array exceeds size warning threshold.
 
     Args:
-        array: Zarr array to check.
+        array: HDF5 dataset or array to check.
         threshold_mb: Size threshold in megabytes (default 100MB).
 
     Returns:
@@ -111,11 +120,11 @@ def should_warn_large(
     return size_mb > threshold_mb
 
 
-def estimate_memory(array: "zarr.Array") -> int:
+def estimate_memory(array: Union["h5py.Dataset", np.ndarray]) -> int:
     """Estimate memory required to load array.
 
     Args:
-        array: Zarr array to estimate.
+        array: HDF5 dataset or array to estimate.
 
     Returns:
         Estimated size in bytes.
@@ -131,8 +140,37 @@ def estimate_memory(array: "zarr.Array") -> int:
 # =============================================================================
 
 
+def validate_hdf5_path(path: str | Path) -> Path:
+    """Validate that path points to a valid HDF5 file.
+
+    Args:
+        path: Path to validate.
+
+    Returns:
+        Validated Path object.
+
+    Raises:
+        InvalidHDF5PathError: If path is invalid or not an HDF5 file.
+    """
+    path = Path(path)
+
+    if not path.exists():
+        raise InvalidHDF5PathError(f"Path does not exist: {path}")
+
+    if not path.is_file():
+        raise InvalidHDF5PathError(f"Path is not a file: {path}")
+
+    # Check file extension
+    if path.suffix.lower() not in ('.h5', '.hdf5', '.hdf'):
+        raise InvalidHDF5PathError(
+            f"Path does not have HDF5 extension (.h5, .hdf5): {path}"
+        )
+
+    return path
+
+
 def validate_zarr_path(path: str | Path) -> Path:
-    """Validate that path points to a valid zarr archive.
+    """Validate that path points to a valid zarr archive (legacy support).
 
     Args:
         path: Path to validate.

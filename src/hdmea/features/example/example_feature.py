@@ -19,9 +19,8 @@ import logging
 from typing import Any, Dict, Optional
 
 import numpy as np
-import zarr
 
-from hdmea.features.base import FeatureExtractor
+from hdmea.features.base import FeatureExtractor, HDF5Group
 from hdmea.features.registry import FeatureRegistry
 
 
@@ -49,7 +48,7 @@ class ExampleFeatureExtractor(FeatureExtractor):
     version = "1.0.0"  # Increment when algorithm changes
     description = "Example feature extractor for documentation"
     
-    # Declare what inputs are needed from the Zarr
+    # Declare what inputs are needed from the HDF5
     # These paths are relative to the root group
     required_inputs = [
         "spike_times",  # Means root["units"][unit_id]["spike_times"]
@@ -85,22 +84,22 @@ class ExampleFeatureExtractor(FeatureExtractor):
     
     def extract(
         self,
-        unit_data: zarr.Group,
-        stimulus_data: zarr.Group,
+        unit_data: HDF5Group,
+        stimulus_data: HDF5Group,
         config: Optional[Dict[str, Any]] = None,
-        metadata: Optional[zarr.Group] = None,
+        metadata: Optional[HDF5Group] = None,
     ) -> Dict[str, Any]:
         """
         Extract features for a single unit.
         
         This method is called once per unit. It receives:
-        - unit_data: The Zarr group for this unit (root["units"][unit_id])
-        - stimulus_data: The Zarr group for stimulus info (root["stimulus"])
+        - unit_data: The HDF5 group for this unit (root["units"][unit_id])
+        - stimulus_data: The HDF5 group for stimulus info (root["stimulus"])
         - config: Optional runtime configuration overrides
         
         Args:
-            unit_data: Zarr group containing unit data
-            stimulus_data: Zarr group containing stimulus timing
+            unit_data: HDF5 group containing unit data
+            stimulus_data: HDF5 group containing stimulus timing
             config: Optional configuration dict
         
         Returns:
@@ -114,8 +113,8 @@ class ExampleFeatureExtractor(FeatureExtractor):
         # Get config with defaults
         config = config or {}
         
-        # Load required data from Zarr
-        # Note: unit_data["spike_times"] accesses the array
+        # Load required data from HDF5
+        # Note: unit_data["spike_times"] accesses the dataset
         spike_times = unit_data["spike_times"][:]  # [:] loads into memory
         
         # Handle empty case

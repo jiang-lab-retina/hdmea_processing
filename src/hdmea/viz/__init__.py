@@ -6,12 +6,13 @@ Provides:
     - Receptive field visualizations
     - Tuning curve plots
     - Common plotting styles
-    - zarr_viz: Interactive Zarr archive explorer (requires viz extras)
+    - zarr_viz: Interactive HDF5/Zarr archive explorer (requires viz extras)
 
 Sub-modules:
-    zarr_viz: Streamlit-based Zarr visualization tool
+    zarr_viz: Streamlit-based visualization tool for HDF5 and Zarr files
               Install with: pip install hdmea[viz]
               Launch with: python -m hdmea.viz.zarr_viz [path]
+              Supports: .h5, .hdf5 files (HDF5) and .zarr directories (legacy)
 """
 
 # Optional: expose zarr_viz launch for convenience

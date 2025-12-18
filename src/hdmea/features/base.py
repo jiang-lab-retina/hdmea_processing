@@ -6,13 +6,16 @@ the required interface.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 import logging
 
-import zarr
+import h5py
 
 
 logger = logging.getLogger(__name__)
+
+# Type alias for HDF5 groups (compatible with both File and Group)
+HDF5Group = Union[h5py.File, h5py.Group]
 
 
 class FeatureExtractor(ABC):
@@ -62,19 +65,19 @@ class FeatureExtractor(ABC):
     @abstractmethod
     def extract(
         self,
-        unit_data: zarr.Group,
-        stimulus_data: zarr.Group,
+        unit_data: HDF5Group,
+        stimulus_data: HDF5Group,
         config: Optional[Dict[str, Any]] = None,
-        metadata: Optional[zarr.Group] = None,
+        metadata: Optional[HDF5Group] = None,
     ) -> Dict[str, Any]:
         """
         Extract features for a single unit.
         
         Args:
-            unit_data: Zarr group for the unit (contains spike_times, waveform, etc.)
-            stimulus_data: Zarr group with stimulus information
+            unit_data: HDF5 group for the unit (contains spike_times, waveform, etc.)
+            stimulus_data: HDF5 group with stimulus information
             config: Optional runtime configuration overrides
-            metadata: Optional Zarr group with recording metadata (acquisition_rate, etc.)
+            metadata: Optional HDF5 group with recording metadata (acquisition_rate, etc.)
         
         Returns:
             Dictionary mapping feature names to values (scalars or arrays)
@@ -86,12 +89,12 @@ class FeatureExtractor(ABC):
         """
         pass
     
-    def validate_inputs(self, root: zarr.Group) -> List[str]:
+    def validate_inputs(self, root: HDF5Group) -> List[str]:
         """
-        Check that all required inputs are present in the Zarr.
+        Check that all required inputs are present in the HDF5 file.
         
         Args:
-            root: Root Zarr group for the recording
+            root: Root HDF5 group for the recording
         
         Returns:
             List of missing input paths (empty if all present)

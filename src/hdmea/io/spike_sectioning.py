@@ -8,7 +8,7 @@ and per-trial (trials_spike_times) storage formats.
 Example:
     >>> from hdmea.io.spike_sectioning import section_spike_times
     >>> result = section_spike_times(
-    ...     zarr_path="artifacts/JIANG009_2025-04-10.zarr",
+    ...     hdf5_path="artifacts/JIANG009_2025-04-10.h5",
     ...     trial_repeats=3,
     ...     pad_margin=(2.0, 0.0),  # 2s pre-margin, 0s post-margin
     ... )
@@ -17,7 +17,6 @@ Example:
 
 import logging
 import os
-import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -25,9 +24,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import h5py
 import numpy as np
-import zarr
 from tqdm import tqdm
+
+from hdmea.io.hdf5_store import open_recording_hdf5
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ def _section_unit_spikes(
 
 
 def _write_sectioned_spikes(
-    unit_group: zarr.Group,
+    unit_group: h5py.Group,
     movie_name: str,
     full_spike_times: np.ndarray,
     trials_spike_times: Dict[int, np.ndarray],
@@ -143,7 +144,7 @@ def _write_sectioned_spikes(
     force: bool = False,
 ) -> None:
     """
-    Write sectioned spike times to unit group in Zarr.
+    Write sectioned spike times to unit group in HDF5.
     
     Creates structure:
         spike_times_sectioned/{movie_name}/
@@ -154,7 +155,7 @@ def _write_sectioned_spikes(
                 ...
     
     Args:
-        unit_group: Zarr group for the unit (units/{unit_id}).
+        unit_group: HDF5 group for the unit (units/{unit_id}).
         movie_name: Name of the movie/stimulus.
         full_spike_times: All spikes from all trials (sorted).
         trials_spike_times: Dict mapping trial_idx -> spike array.
@@ -183,7 +184,6 @@ def _write_sectioned_spikes(
         raise last_error
     
     # Ensure spike_times_sectioned group exists
-    # Note: When force=True, existing groups are pre-deleted before parallel processing
     if "spike_times_sectioned" not in unit_group:
         sectioned_group = _retry_operation(unit_group.create_group, "spike_times_sectioned")
     else:
@@ -196,38 +196,24 @@ def _write_sectioned_spikes(
                 f"spike_times_sectioned/{movie_name} already exists for unit. "
                 "Use force=True to overwrite."
             )
-        # Delete existing movie group with retry (shouldn't happen if pre-deleted, but safe fallback)
+        # Delete existing movie group with retry
         try:
-            _retry_operation(lambda: sectioned_group.__delitem__(movie_name))
+            del sectioned_group[movie_name]
         except Exception:
-            pass  # May already be deleted by pre-deletion step
+            pass  # May already be deleted
     
     # Create movie group
     movie_group = _retry_operation(sectioned_group.create_group, movie_name)
     
     # Write full_spike_times array
-    _retry_operation(
-        movie_group.create_dataset,
-        "full_spike_times",
-        data=full_spike_times,
-        shape=full_spike_times.shape,
-        dtype=np.int64,
-        overwrite=True,
-    )
+    movie_group.create_dataset("full_spike_times", data=full_spike_times, dtype=np.int64)
     
     # Create trials_spike_times group
-    trials_group = _retry_operation(movie_group.create_group, "trials_spike_times")
+    trials_group = movie_group.create_group("trials_spike_times")
     
     # Write per-trial arrays
     for trial_idx, trial_spikes in trials_spike_times.items():
-        _retry_operation(
-            trials_group.create_dataset,
-            str(trial_idx),
-            data=trial_spikes,
-            shape=trial_spikes.shape,
-            dtype=np.int64,
-            overwrite=True,
-        )
+        trials_group.create_dataset(str(trial_idx), data=trial_spikes, dtype=np.int64)
     
     # Write metadata attributes
     movie_group.attrs["n_trials"] = len(trials_spike_times)
@@ -243,7 +229,7 @@ def _write_sectioned_spikes(
 # =============================================================================
 
 def section_spike_times(
-    zarr_path: Union[str, Path],
+    hdf5_path: Union[str, Path],
     *,
     movie_names: Optional[List[str]] = None,
     trial_repeats: int = 3,
@@ -253,13 +239,13 @@ def section_spike_times(
     """
     Section spike times by stimulation periods defined in section_time.
     
-    For each unit in the Zarr archive, extracts spikes falling within
+    For each unit in the HDF5 file, extracts spikes falling within
     trial periods (with optional padding) and stores them in TWO formats:
     - `full_spike_times`: All spikes from all trials combined
     - `trials_spike_times/{idx}`: Spikes per trial based on section_time boundaries
     
     Args:
-        zarr_path: Path to Zarr archive containing recording data.
+        hdf5_path: Path to HDF5 file containing recording data.
             Must have `units/{unit_id}/spike_times` arrays (in sample units)
             and `stimulus/section_time/{movie_name}` trial boundaries.
         movie_names: Optional list of movies to process. If None, processes
@@ -276,26 +262,26 @@ def section_spike_times(
         SectionResult with success, units_processed, movies_processed, etc.
     
     Raises:
-        FileNotFoundError: If zarr_path does not exist.
+        FileNotFoundError: If hdf5_path does not exist.
         FileExistsError: If sectioned data exists and force=False.
     
     Example:
         >>> result = section_spike_times(
-        ...     zarr_path="artifacts/JIANG009_2025-04-10.zarr",
+        ...     hdf5_path="artifacts/JIANG009_2025-04-10.h5",
         ...     trial_repeats=3,
         ...     pad_margin=(2.0, 0.0),
         ... )
         >>> print(f"Processed {result.units_processed} units")
     """
-    zarr_path = Path(zarr_path)
+    hdf5_path = Path(hdf5_path)
     warnings: List[str] = []
     
     # Validate path exists
-    if not zarr_path.exists():
-        raise FileNotFoundError(f"Zarr archive not found: {zarr_path}")
+    if not hdf5_path.exists():
+        raise FileNotFoundError(f"HDF5 file not found: {hdf5_path}")
     
-    # Open Zarr
-    root = zarr.open(str(zarr_path), mode="r+")
+    # Open HDF5
+    root = open_recording_hdf5(hdf5_path, mode="r+")
     
     # Get acquisition_rate from metadata
     if "metadata" not in root:
@@ -320,8 +306,9 @@ def section_spike_times(
     
     # Check for section_time
     if "stimulus" not in root or "section_time" not in root["stimulus"]:
-        warnings.append("No section_time data found in Zarr")
+        warnings.append("No section_time data found in HDF5")
         logger.warning("No section_time data found - cannot section spike times")
+        root.close()
         return SectionResult(
             success=True,
             units_processed=0,
@@ -348,6 +335,7 @@ def section_spike_times(
     
     if not movies_to_process:
         warnings.append("No movies to process")
+        root.close()
         return SectionResult(
             success=True,
             units_processed=0,
@@ -368,7 +356,8 @@ def section_spike_times(
     
     # Check for units
     if "units" not in root:
-        warnings.append("No units group found in Zarr")
+        warnings.append("No units group found in HDF5")
+        root.close()
         return SectionResult(
             success=True,
             units_processed=0,
@@ -384,7 +373,8 @@ def section_spike_times(
     unit_ids = list(units_group.keys())
     
     if not unit_ids:
-        warnings.append("No units found in Zarr")
+        warnings.append("No units found in HDF5")
+        root.close()
         return SectionResult(
             success=True,
             units_processed=0,
@@ -409,26 +399,15 @@ def section_spike_times(
     if len(first_section) > 0:
         logger.info(f"DEBUG: First movie '{first_movie}' section_time: trial 0 = [{first_section[0, 0]:,} - {first_section[0, 1]:,}]")
     
-    # If force=True, pre-delete all existing spike_times_sectioned directories SEQUENTIALLY
-    # Uses shutil.rmtree for reliable deletion on Windows (zarr del can fail)
+    # If force=True, pre-delete all existing spike_times_sectioned groups
     if force:
         logger.info("Clearing existing spike_times_sectioned data...")
         for unit_id in tqdm(unit_ids, desc="Clearing existing data", leave=False):
-            # Use filesystem deletion instead of zarr API (more reliable on Windows)
-            sectioned_path = zarr_path / "units" / unit_id / "spike_times_sectioned"
-            if sectioned_path.exists():
-                try:
-                    shutil.rmtree(str(sectioned_path))
-                except Exception as e:
-                    # Retry with delay for Windows file locking
-                    time.sleep(RETRY_DELAY * 2)
-                    try:
-                        shutil.rmtree(str(sectioned_path))
-                    except Exception:
-                        warnings.append(f"Could not delete {unit_id}/spike_times_sectioned: {e}")
-        
-        # Small delay to ensure filesystem sync before writes
-        time.sleep(0.2)
+            try:
+                if "spike_times_sectioned" in units_group[unit_id]:
+                    del units_group[unit_id]["spike_times_sectioned"]
+            except Exception as e:
+                warnings.append(f"Could not delete {unit_id}/spike_times_sectioned: {e}")
     
     # PHASE 1: Compute all sectioned spikes in PARALLEL (CPU-bound, no I/O conflicts)
     units_processed = 0
@@ -518,6 +497,9 @@ def section_spike_times(
         f"Sectioning complete: {units_processed} units, "
         f"{len(movies_actually_processed)} movies"
     )
+    
+    # Close HDF5 file
+    root.close()
     
     return SectionResult(
         success=True,

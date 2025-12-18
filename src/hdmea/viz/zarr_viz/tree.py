@@ -1,8 +1,8 @@
 """
-Zarr tree structure and traversal.
+Tree structure and traversal for HDF5/Zarr archives.
 
 Provides data structures and functions for parsing and navigating
-zarr archive hierarchies.
+HDF5 file and Zarr archive hierarchies.
 """
 
 from __future__ import annotations
@@ -10,17 +10,23 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Literal, Optional
+from typing import Callable, Literal, Optional, Union
 
-import zarr
+import h5py
 
-from hdmea.viz.zarr_viz.utils import InvalidZarrPathError, validate_zarr_path
+from hdmea.viz.zarr_viz.utils import (
+    InvalidZarrPathError,
+    InvalidHDF5PathError,
+    validate_zarr_path,
+    validate_hdf5_path,
+)
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "TreeNode",
     "parse_zarr_tree",
+    "parse_hdf5_tree",
     "get_node_by_path",
     "render_tree",
 ]
@@ -74,8 +80,34 @@ class TreeNode:
         return f"{self.icon} {self.name}{suffix}"
 
 
+def parse_hdf5_tree(hdf5_path: str | Path) -> TreeNode:
+    """Parse HDF5 file into tree structure.
+
+    Args:
+        hdf5_path: Path to HDF5 file.
+
+    Returns:
+        Root TreeNode containing the complete hierarchy.
+
+    Raises:
+        InvalidHDF5PathError: If path is invalid or not an HDF5 file.
+    """
+    validated_path = validate_hdf5_path(hdf5_path)
+
+    try:
+        root = h5py.File(str(validated_path), mode="r")
+    except Exception as e:
+        raise InvalidHDF5PathError(f"Failed to open HDF5 file: {e}") from e
+
+    logger.info(f"Parsing HDF5 tree: {validated_path}")
+
+    result = _parse_hdf5_node(root, "/", validated_path.name)
+    root.close()
+    return result
+
+
 def parse_zarr_tree(zarr_path: str | Path) -> TreeNode:
-    """Parse zarr archive into tree structure.
+    """Parse zarr archive into tree structure (legacy support).
 
     Args:
         zarr_path: Path to zarr archive directory.
@@ -86,6 +118,14 @@ def parse_zarr_tree(zarr_path: str | Path) -> TreeNode:
     Raises:
         InvalidZarrPathError: If path is invalid or not a zarr archive.
     """
+    # Import zarr only if needed (it's now optional)
+    try:
+        import zarr
+    except ImportError:
+        raise InvalidZarrPathError(
+            "Zarr library not installed. Install with: pip install zarr"
+        )
+    
     validated_path = validate_zarr_path(zarr_path)
 
     try:
@@ -95,11 +135,58 @@ def parse_zarr_tree(zarr_path: str | Path) -> TreeNode:
 
     logger.info(f"Parsing zarr tree: {validated_path}")
 
-    return _parse_node(root, "/", validated_path.name)
+    return _parse_zarr_node(root, "/", validated_path.name)
 
 
-def _parse_node(node: zarr.Group | zarr.Array, path: str, name: str) -> TreeNode:
-    """Recursively parse a zarr node into TreeNode.
+def _parse_hdf5_node(node: Union[h5py.File, h5py.Group, h5py.Dataset], path: str, name: str) -> TreeNode:
+    """Recursively parse an HDF5 node into TreeNode.
+
+    Args:
+        node: HDF5 group or dataset object.
+        path: Current path in the hierarchy.
+        name: Name of this node.
+
+    Returns:
+        TreeNode representing this node and its children.
+    """
+    if isinstance(node, h5py.Dataset):
+        # Leaf node - dataset
+        nbytes = node.id.get_storage_size() if hasattr(node.id, 'get_storage_size') else None
+        return TreeNode(
+            path=path,
+            name=name,
+            node_type="array",
+            children=[],
+            shape=tuple(node.shape),
+            dtype=str(node.dtype),
+            chunks=tuple(node.chunks) if node.chunks else None,
+            nbytes=nbytes,
+        )
+    else:
+        # Container node - group
+        children = []
+        try:
+            # Get all items in the group
+            for child_name in sorted(node.keys()):
+                child_path = f"{path.rstrip('/')}/{child_name}"
+                try:
+                    child_node = node[child_name]
+                    children.append(_parse_hdf5_node(child_node, child_path, child_name))
+                except Exception as e:
+                    logger.warning(f"Failed to parse child {child_name}: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to iterate group {path}: {e}")
+
+        return TreeNode(
+            path=path,
+            name=name,
+            node_type="group",
+            children=children,
+        )
+
+
+def _parse_zarr_node(node, path: str, name: str) -> TreeNode:
+    """Recursively parse a zarr node into TreeNode (legacy support).
 
     Args:
         node: Zarr group or array object.
@@ -109,6 +196,8 @@ def _parse_node(node: zarr.Group | zarr.Array, path: str, name: str) -> TreeNode
     Returns:
         TreeNode representing this node and its children.
     """
+    import zarr
+    
     if isinstance(node, zarr.Array):
         # Leaf node - array
         return TreeNode(
@@ -130,7 +219,7 @@ def _parse_node(node: zarr.Group | zarr.Array, path: str, name: str) -> TreeNode
                 child_path = f"{path.rstrip('/')}/{child_name}"
                 try:
                     child_node = node[child_name]
-                    children.append(_parse_node(child_node, child_path, child_name))
+                    children.append(_parse_zarr_node(child_node, child_path, child_name))
                 except Exception as e:
                     logger.warning(f"Failed to parse child {child_name}: {e}")
         except Exception as e:

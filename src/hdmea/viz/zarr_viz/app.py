@@ -26,15 +26,63 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 import numpy as np
 import streamlit as st
-import zarr
+import h5py
 
 if TYPE_CHECKING:
     pass  # For future type hints if needed
 
-from hdmea.viz.zarr_viz.tree import TreeNode, parse_zarr_tree, get_node_by_path
+from hdmea.viz.zarr_viz.tree import TreeNode, parse_zarr_tree, parse_hdf5_tree, get_node_by_path
 from hdmea.viz.zarr_viz.plots import create_plot, get_plot_bytes
 from hdmea.viz.zarr_viz.metadata import format_array_info, format_group_info, format_attributes
 from hdmea.viz.zarr_viz.utils import InvalidZarrPathError, UnsupportedArrayError, should_warn_large
+
+
+def _normalize_path(path: str) -> str:
+    """Normalize file path, removing URI prefixes if present."""
+    # Handle file:// URI format
+    if path.startswith("file://"):
+        path = path[7:]  # Remove "file://"
+    # On Windows, also handle /C:/ -> C:/
+    if len(path) > 2 and path[0] == '/' and path[2] == ':':
+        path = path[1:]
+    return path
+
+
+def _is_hdf5_file(path: str) -> bool:
+    """Check if path points to an HDF5 file based on extension."""
+    normalized = _normalize_path(path)
+    return Path(normalized).suffix.lower() in ('.h5', '.hdf5', '.hdf')
+
+
+def _open_data_file(path: str, node_path: str = "/"):
+    """Open HDF5 or Zarr file and navigate to the specified node path.
+    
+    Args:
+        path: Path to data file (.h5 or .zarr)
+        node_path: Path within the file to navigate to
+        
+    Returns:
+        Tuple of (file_handle, data_object) - caller must close file_handle for HDF5
+    """
+    normalized_path = _normalize_path(path)
+    clean_path = node_path.strip("/")
+    
+    if _is_hdf5_file(normalized_path):
+        root = h5py.File(normalized_path, mode="r")
+        if clean_path:
+            data = root[clean_path]
+        else:
+            data = root
+        return root, data
+    else:
+        # Zarr (legacy)
+        import zarr
+        root = zarr.open(str(normalized_path), mode="r")
+        if clean_path:
+            data = root[clean_path]
+        else:
+            data = root
+        return None, data  # Zarr doesn't need explicit close
 
 # =============================================================================
 # Page Configuration
@@ -91,36 +139,41 @@ def add_to_recent_files(path: str, max_recent: int = 10) -> None:
     st.session_state.recent_files = st.session_state.recent_files[:max_recent]
 
 
-def get_directory_contents(path: str) -> tuple[list[str], list[str]]:
-    """Get directories and zarr files in a path.
+def get_directory_contents(path: str) -> tuple[list[str], list[str], list[str]]:
+    """Get directories, HDF5 files, and zarr folders in a path.
     
     Args:
         path: Directory path to list.
         
     Returns:
-        Tuple of (directories, zarr_folders).
+        Tuple of (directories, hdf5_files, zarr_folders).
     """
     try:
         p = Path(path)
         if not p.exists() or not p.is_dir():
-            return [], []
+            return [], [], []
         
         dirs = []
+        hdf5_files = []
         zarr_folders = []
         
         for item in sorted(p.iterdir()):
-            if item.is_dir():
+            if item.is_file():
+                # Check if it's an HDF5 file
+                if item.suffix.lower() in ('.h5', '.hdf5', '.hdf'):
+                    hdf5_files.append(item.name)
+            elif item.is_dir():
                 # Check if it's a zarr archive
                 if item.suffix == '.zarr' or (item / '.zarray').exists() or (item / '.zgroup').exists():
                     zarr_folders.append(item.name)
                 else:
                     dirs.append(item.name)
         
-        return dirs, zarr_folders
+        return dirs, hdf5_files, zarr_folders
     except PermissionError:
-        return [], []
+        return [], [], []
     except Exception:
-        return [], []
+        return [], [], []
 
 
 # =============================================================================
@@ -128,17 +181,31 @@ def get_directory_contents(path: str) -> tuple[list[str], list[str]]:
 # =============================================================================
 
 
-@st.cache_data(show_spinner="Loading zarr structure...")
-def load_zarr_tree(zarr_path: str) -> TreeNode:
-    """Load and cache zarr tree structure.
+@st.cache_data(show_spinner="Loading file structure...")
+def load_tree(file_path: str) -> TreeNode:
+    """Load and cache HDF5 or Zarr tree structure.
 
     Args:
-        zarr_path: Path to zarr archive.
+        file_path: Path to HDF5 file or zarr archive.
 
     Returns:
         Parsed TreeNode structure.
     """
-    return parse_zarr_tree(zarr_path)
+    # Normalize path (remove file:// prefix, etc.)
+    normalized = _normalize_path(file_path)
+    path = Path(normalized)
+    
+    # Determine file type and parse accordingly
+    if path.is_file() and path.suffix.lower() in ('.h5', '.hdf5', '.hdf'):
+        return parse_hdf5_tree(normalized)
+    else:
+        return parse_zarr_tree(normalized)
+
+
+# Alias for backwards compatibility
+def load_zarr_tree(zarr_path: str) -> TreeNode:
+    """Load zarr tree (deprecated - use load_tree instead)."""
+    return load_tree(zarr_path)
 
 
 # =============================================================================
@@ -149,7 +216,7 @@ def load_zarr_tree(zarr_path: str) -> TreeNode:
 def render_sidebar() -> None:
     """Render the sidebar with path input and tree navigation."""
     with st.sidebar:
-        st.header("📁 Zarr Explorer")
+        st.header("📁 HDF5/Zarr Explorer")
         
         # Inject custom CSS for compact styling
         st.markdown("""
@@ -163,10 +230,10 @@ def render_sidebar() -> None:
 
         # Path input with browse button
         zarr_path = st.text_input(
-            "Zarr Archive Path",
+            "File Path",
             value=st.session_state.zarr_path or "",
-            placeholder="Enter path to .zarr directory",
-            help="Enter the full path to a zarr archive directory",
+            placeholder="Enter path to .h5 file or .zarr directory",
+            help="Enter the full path to an HDF5 file (.h5) or zarr archive (.zarr)",
         )
 
         # Buttons row: Browse and Load
@@ -182,7 +249,7 @@ def render_sidebar() -> None:
                 if zarr_path:
                     try:
                         st.session_state.zarr_path = zarr_path
-                        st.session_state.tree = load_zarr_tree(zarr_path)
+                        st.session_state.tree = load_tree(zarr_path)
                         st.session_state.selected_path = None
                         st.session_state.last_error = None
                         st.session_state.show_browser = False
@@ -223,7 +290,7 @@ def render_sidebar() -> None:
                     ):
                         st.session_state.zarr_path = recent_path
                         try:
-                            st.session_state.tree = load_zarr_tree(recent_path)
+                            st.session_state.tree = load_tree(recent_path)
                             st.session_state.selected_path = None
                             st.session_state.last_error = None
                             add_to_recent_files(recent_path)
@@ -281,23 +348,46 @@ def render_file_browser() -> None:
             st.rerun()
     
     # Get directory contents
-    dirs, zarr_folders = get_directory_contents(str(current_path))
+    dirs, hdf5_files, zarr_folders = get_directory_contents(str(current_path))
     
-    # Show zarr folders first (selectable)
-    if zarr_folders:
-        st.markdown("**Zarr Archives:**")
-        for zf in zarr_folders[:20]:  # Limit for performance
-            full_path = str(current_path / zf)
+    # Show HDF5 files first (selectable)
+    if hdf5_files:
+        st.markdown("**HDF5 Files:**")
+        for hf in hdf5_files[:20]:  # Limit for performance
+            full_path = str(current_path / hf)
             if st.button(
-                f"📦 {zf}",
-                key=f"zarr_{zf}",
+                f"📄 {hf}",
+                key=f"hdf5_{hf}",
                 use_container_width=True,
                 type="primary",
             ):
                 st.session_state.zarr_path = full_path
                 st.session_state.show_browser = False
                 try:
-                    st.session_state.tree = load_zarr_tree(full_path)
+                    st.session_state.tree = load_tree(full_path)
+                    st.session_state.selected_path = None
+                    st.session_state.last_error = None
+                    add_to_recent_files(full_path)
+                except Exception as e:
+                    st.session_state.last_error = f"Error: {e}"
+                    st.session_state.tree = None
+                st.rerun()
+    
+    # Show zarr folders (legacy, selectable)
+    if zarr_folders:
+        st.markdown("**Zarr Archives (legacy):**")
+        for zf in zarr_folders[:20]:  # Limit for performance
+            full_path = str(current_path / zf)
+            if st.button(
+                f"📦 {zf}",
+                key=f"zarr_{zf}",
+                use_container_width=True,
+                type="secondary",
+            ):
+                st.session_state.zarr_path = full_path
+                st.session_state.show_browser = False
+                try:
+                    st.session_state.tree = load_tree(full_path)
                     st.session_state.selected_path = None
                     st.session_state.last_error = None
                     add_to_recent_files(full_path)
@@ -323,8 +413,8 @@ def render_file_browser() -> None:
         if len(dirs) > 30:
             st.caption(f"... and {len(dirs) - 30} more folders")
     
-    if not dirs and not zarr_folders:
-        st.caption("No folders found")
+    if not dirs and not hdf5_files and not zarr_folders:
+        st.caption("No files or folders found")
     
     st.markdown("---")
 
@@ -571,7 +661,7 @@ def render_welcome() -> None:
             if quick_path:
                 try:
                     st.session_state.zarr_path = quick_path
-                    st.session_state.tree = load_zarr_tree(quick_path)
+                    st.session_state.tree = load_tree(quick_path)
                     st.session_state.last_error = None
                     st.rerun()
                 except InvalidZarrPathError as e:
@@ -591,14 +681,9 @@ def render_group_view(node: TreeNode) -> None:
     st.subheader(f"📁 {node.path}")
 
     # Get the group object
+    file_handle = None
     try:
-        root = zarr.open(str(st.session_state.zarr_path), mode="r")
-        if node.path == "/" or node.path == "":
-            group = root
-        else:
-            # Remove leading slash for zarr access
-            path = node.path.lstrip("/")
-            group = root[path]
+        file_handle, group = _open_data_file(st.session_state.zarr_path, node.path)
     except Exception as e:
         st.error(f"Failed to open group: {e}")
         return
@@ -645,6 +730,10 @@ def render_group_view(node: TreeNode) -> None:
             st.info("No attributes found for this group.")
     except Exception as e:
         st.warning(f"Could not load attributes: {e}")
+    finally:
+        # Close HDF5 file handle if present
+        if file_handle is not None:
+            file_handle.close()
 
     # Show child summary
     st.divider()
@@ -673,114 +762,114 @@ def render_array_view(node: TreeNode) -> None:
 
     st.divider()
 
-    # Load the actual array from zarr
+    # Load the actual array from file
+    file_handle = None
     try:
-        root = zarr.open(st.session_state.zarr_path, mode="r")
-        # Navigate to the array
-        array_path = node.path.strip("/")
-        if array_path:
-            array = root[array_path]
-        else:
-            array = root
+        file_handle, array = _open_data_file(st.session_state.zarr_path, node.path)
     except Exception as e:
         st.error(f"Failed to load array: {e}")
         return
 
-    # Check if array is too large
-    if should_warn_large(array):
-        size_mb = node.nbytes / (1024 * 1024) if node.nbytes else 0
-        st.warning(
-            f"⚠️ This array is large ({size_mb:.1f} MB). "
-            "Data will be sampled for visualization."
-        )
-
-    # Handle ND arrays - show dimension sliders
-    slice_indices = {}
-    if node.shape and len(node.shape) > 2:
-        st.markdown("**Dimension Slicing** (for dimensions > 2)")
-        cols = st.columns(min(len(node.shape) - 2, 4))
-        for i, dim in enumerate(range(2, len(node.shape))):
-            with cols[i % len(cols)]:
-                max_val = node.shape[dim] - 1
-                slice_indices[dim] = st.slider(
-                    f"Dim {dim}",
-                    min_value=0,
-                    max_value=max_val,
-                    value=st.session_state.slice_config.get(f"{node.path}_dim{dim}", 0),
-                    key=f"slice_{node.path}_{dim}",
-                )
-                st.session_state.slice_config[f"{node.path}_dim{dim}"] = slice_indices[dim]
-
-    # Check if array is numeric
-    if not np.issubdtype(array.dtype, np.number):
-        st.info(f"📋 This array contains non-numeric data ({array.dtype}). Cannot visualize.")
-        # Show first few values as text
-        try:
-            sample = array[:min(10, array.shape[0])]
-            # Convert to Python list/string for safe display
-            sample_list = list(sample) if hasattr(sample, '__iter__') else [sample]
-            sample_str = ", ".join(str(v) for v in sample_list[:10])
-            st.text(f"Sample values: [{sample_str}]")
-        except Exception as e:
-            st.text(f"Could not load sample: {e}")
-        return
-
-    # Generate plot
     try:
-        title = f"{node.path}\nShape: {node.shape}, Type: {node.dtype}"
-        fig = create_plot(array, title=title, slice_indices=slice_indices)
+        # Check if array is too large
+        if should_warn_large(array):
+            size_mb = node.nbytes / (1024 * 1024) if node.nbytes else 0
+            st.warning(
+                f"⚠️ This array is large ({size_mb:.1f} MB). "
+                "Data will be sampled for visualization."
+            )
 
-        # Display interactive plot
-        st.plotly_chart(fig, use_container_width=True, config={
-            "displayModeBar": True,
-            "modeBarButtonsToRemove": ["lasso2d", "select2d"],
-            "displaylogo": False,
-        })
+        # Handle ND arrays - show dimension sliders
+        slice_indices = {}
+        if node.shape and len(node.shape) > 2:
+            st.markdown("**Dimension Slicing** (for dimensions > 2)")
+            cols = st.columns(min(len(node.shape) - 2, 4))
+            for i, dim in enumerate(range(2, len(node.shape))):
+                with cols[i % len(cols)]:
+                    max_val = node.shape[dim] - 1
+                    slice_indices[dim] = st.slider(
+                        f"Dim {dim}",
+                        min_value=0,
+                        max_value=max_val,
+                        value=st.session_state.slice_config.get(f"{node.path}_dim{dim}", 0),
+                        key=f"slice_{node.path}_{dim}",
+                    )
+                    st.session_state.slice_config[f"{node.path}_dim{dim}"] = slice_indices[dim]
 
-        # Export buttons
-        st.markdown("### 💾 Export")
-        col1, col2, col3 = st.columns([1, 1, 2])
-
-        with col1:
+        # Check if array is numeric
+        if not np.issubdtype(array.dtype, np.number):
+            st.info(f"📋 This array contains non-numeric data ({array.dtype}). Cannot visualize.")
+            # Show first few values as text
             try:
-                png_bytes = get_plot_bytes(fig, format="png")
-                st.download_button(
-                    label="📥 Save PNG",
-                    data=png_bytes,
-                    file_name=f"{node.name}.png",
-                    mime="image/png",
-                    use_container_width=True,
-                )
+                sample = array[:min(10, array.shape[0])]
+                # Convert to Python list/string for safe display
+                sample_list = list(sample) if hasattr(sample, '__iter__') else [sample]
+                sample_str = ", ".join(str(v) for v in sample_list[:10])
+                st.text(f"Sample values: [{sample_str}]")
             except Exception as e:
-                st.button("📥 Save PNG", disabled=True, help=f"PNG export unavailable: {e}")
+                st.text(f"Could not load sample: {e}")
+            return
 
-        with col2:
-            try:
-                svg_bytes = get_plot_bytes(fig, format="svg")
-                st.download_button(
-                    label="📥 Save SVG",
-                    data=svg_bytes,
-                    file_name=f"{node.name}.svg",
-                    mime="image/svg+xml",
-                    use_container_width=True,
-                )
-            except Exception as e:
-                st.button("📥 Save SVG", disabled=True, help=f"SVG export unavailable: {e}")
+        # Generate plot
+        try:
+            title = f"{node.path}\nShape: {node.shape}, Type: {node.dtype}"
+            fig = create_plot(array, title=title, slice_indices=slice_indices)
 
-    except UnsupportedArrayError as e:
-        st.info(f"📋 {e}")
-    except Exception as e:
-        st.error(f"Failed to create plot: {e}")
+            # Display interactive plot
+            st.plotly_chart(fig, use_container_width=True, config={
+                "displayModeBar": True,
+                "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+                "displaylogo": False,
+            })
 
-    # Metadata panel
-    render_metadata_panel(array, node)
+            # Export buttons
+            st.markdown("### 💾 Export")
+            col1, col2, col3 = st.columns([1, 1, 2])
+
+            with col1:
+                try:
+                    png_bytes = get_plot_bytes(fig, format="png")
+                    st.download_button(
+                        label="📥 Save PNG",
+                        data=png_bytes,
+                        file_name=f"{node.name}.png",
+                        mime="image/png",
+                        use_container_width=True,
+                    )
+                except Exception as e:
+                    st.button("📥 Save PNG", disabled=True, help=f"PNG export unavailable: {e}")
+
+            with col2:
+                try:
+                    svg_bytes = get_plot_bytes(fig, format="svg")
+                    st.download_button(
+                        label="📥 Save SVG",
+                        data=svg_bytes,
+                        file_name=f"{node.name}.svg",
+                        mime="image/svg+xml",
+                        use_container_width=True,
+                    )
+                except Exception as e:
+                    st.button("📥 Save SVG", disabled=True, help=f"SVG export unavailable: {e}")
+
+        except UnsupportedArrayError as e:
+            st.info(f"📋 {e}")
+        except Exception as e:
+            st.error(f"Failed to create plot: {e}")
+
+        # Metadata panel
+        render_metadata_panel(array, node)
+    finally:
+        # Close HDF5 file handle if present
+        if file_handle is not None:
+            file_handle.close()
 
 
-def render_metadata_panel(array: "zarr.Array", node: TreeNode) -> None:
+def render_metadata_panel(array, node: TreeNode) -> None:
     """Render metadata panel for array.
 
     Args:
-        array: Zarr array object.
+        array: HDF5 dataset or Zarr array object.
         node: TreeNode representing the array.
     """
     st.divider()
@@ -829,7 +918,7 @@ def main() -> None:
         ):
             st.session_state.zarr_path = potential_path
             try:
-                st.session_state.tree = load_zarr_tree(potential_path)
+                st.session_state.tree = load_tree(potential_path)
             except Exception as e:
                 st.session_state.last_error = str(e)
 

@@ -6,16 +6,17 @@ playlist and movie_length CSV configuration files.
 """
 
 import itertools
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import h5py
 import numpy as np
 import pandas as pd
-import zarr
 from scipy.signal import find_peaks
 
-from hdmea.io.zarr_store import open_recording_zarr
+from hdmea.io.hdf5_store import open_recording_hdf5
 from hdmea.utils.exceptions import MissingInputError
 
 
@@ -264,7 +265,7 @@ def _get_movie_start_end_frame(
 # =============================================================================
 
 def add_section_time(
-    zarr_path: Union[str, Path],
+    hdf5_path: Union[str, Path],
     playlist_name: str,
     *,
     playlist_file_path: Optional[Union[str, Path]] = None,
@@ -276,7 +277,7 @@ def add_section_time(
     force: bool = False,
 ) -> bool:
     """
-    Add section time metadata to a Zarr recording from playlist CSV.
+    Add section time metadata to an HDF5 recording from playlist CSV.
     
     Computes frame boundaries for each movie in the playlist, converts them
     to acquisition sample indices using frame_timestamps, and stores them
@@ -288,7 +289,7 @@ def add_section_time(
     ``time_seconds = sample_index / acquisition_rate``
     
     Args:
-        zarr_path: Path to Zarr archive
+        hdf5_path: Path to HDF5 file
         playlist_name: Name of playlist in playlist.csv
         playlist_file_path: Path to playlist CSV (uses default if None)
         movie_length_file_path: Path to movie_length CSV (uses default if None)
@@ -312,14 +313,14 @@ def add_section_time(
     Example:
         >>> from hdmea.io.section_time import add_section_time
         >>> success = add_section_time(
-        ...     zarr_path="artifacts/REC_2023-12-07.zarr",
+        ...     hdf5_path="artifacts/REC_2023-12-07.h5",
         ...     playlist_name="set6a",
         ...     repeats=2,
         ... )
         >>> if success:
         ...     print("Section times added!")
     """
-    zarr_path = Path(zarr_path)
+    hdf5_path = Path(hdf5_path)
     
     # Use default paths if not provided
     if playlist_file_path is None:
@@ -348,18 +349,19 @@ def add_section_time(
         logger.error(f"Playlist '{playlist_name}' not found. Available: {available}")
         return False
     
-    # Open Zarr
+    # Open HDF5
     try:
-        root = open_recording_zarr(zarr_path, mode="r+")
+        root = open_recording_hdf5(hdf5_path, mode="r+")
     except FileNotFoundError:
-        logger.error(f"Zarr not found: {zarr_path}")
+        logger.error(f"HDF5 not found: {hdf5_path}")
         return False
     
     # Check for existing section_time
     stimulus_group = root["stimulus"]
     if "section_time" in stimulus_group and not force:
+        root.close()
         raise FileExistsError(
-            f"section_time already exists in {zarr_path}. "
+            f"section_time already exists in {hdf5_path}. "
             "Use force=True to overwrite."
         )
     
@@ -371,6 +373,7 @@ def add_section_time(
     
     if frame_timestamps is None or len(frame_timestamps) == 0:
         logger.error("No frame_timestamps found in metadata")
+        root.close()
         return False
     
     # Get raw_ch1 light reference for template extraction
@@ -399,6 +402,7 @@ def add_section_time(
     
     if not movie_start_end_frame:
         logger.warning("No section times computed - no valid movies found")
+        root.close()
         return False
     
     # Prepare section_time data
@@ -427,19 +431,14 @@ def add_section_time(
             template_list = list(itertools.zip_longest(*templates, fillvalue=np.nan))
             template_auto[movie_name] = np.nanmean(template_list, axis=1).astype(np.float32)
     
-    # Write to Zarr
+    # Write to HDF5
     # Create/overwrite section_time group
     if "section_time" in stimulus_group:
         del stimulus_group["section_time"]
     st_group = stimulus_group.create_group("section_time")
     
     for movie_name, times in section_time_auto.items():
-        st_group.create_dataset(
-            movie_name,
-            data=times,
-            shape=times.shape,
-            dtype=times.dtype,
-        )
+        st_group.create_dataset(movie_name, data=times, dtype=times.dtype)
     
     logger.info(f"Wrote section_time for {len(section_time_auto)} movies")
     
@@ -450,12 +449,7 @@ def add_section_time(
         lt_group = stimulus_group.create_group("light_template")
         
         for movie_name, template in template_auto.items():
-            lt_group.create_dataset(
-                movie_name,
-                data=template,
-                shape=template.shape,
-                dtype=template.dtype,
-            )
+            lt_group.create_dataset(movie_name, data=template, dtype=template.dtype)
         
         logger.info(f"Wrote light_template for {len(template_auto)} movies")
     
@@ -463,12 +457,15 @@ def add_section_time(
     root.attrs["section_time_playlist"] = playlist_name
     root.attrs["section_time_repeats"] = repeats
     
-    logger.info(f"Section times added successfully to {zarr_path}")
+    # Close HDF5 file
+    root.close()
+    
+    logger.info(f"Section times added successfully to {hdf5_path}")
     return True
 
 
 def add_section_time_analog(
-    zarr_path: Union[str, Path],
+    hdf5_path: Union[str, Path],
     threshold_value: float,
     *,
     movie_name: str = "iprgc_test",
@@ -490,7 +487,7 @@ def add_section_time_analog(
     traces across all detected trials to create a stimulus template.
     
     Args:
-        zarr_path: Path to Zarr archive containing recording data
+        hdf5_path: Path to HDF5 file containing recording data
         threshold_value: Required. Peak height threshold for find_peaks().
             User must inspect signal to determine appropriate value.
         movie_name: Identifier for this stimulus type (default: "iprgc_test").
@@ -507,7 +504,7 @@ def add_section_time_analog(
         (e.g., no peaks detected)
     
     Raises:
-        FileNotFoundError: If zarr_path does not exist
+        FileNotFoundError: If hdf5_path does not exist
         MissingInputError: If required data missing:
             - stimulus/light_reference/raw_ch1
             - metadata/acquisition_rate
@@ -530,7 +527,7 @@ def add_section_time_analog(
         >>> # (e.g., plot np.diff(raw_ch1) and identify peak heights)
         >>> 
         >>> success = add_section_time_analog(
-        ...     zarr_path="artifacts/JIANG009_2025-04-10.zarr",
+        ...     hdf5_path="artifacts/JIANG009_2025-04-10.h5",
         ...     threshold_value=1e5,  # Determined from signal inspection
         ...     movie_name="iprgc_test",
         ...     plot_duration=120.0,  # 2 minute windows
@@ -539,7 +536,7 @@ def add_section_time_analog(
         >>> if success:
         ...     print("Section times and light template stored!")
     """
-    zarr_path = Path(zarr_path)
+    hdf5_path = Path(hdf5_path)
     
     # Validate parameters
     if threshold_value is None:
@@ -549,25 +546,27 @@ def add_section_time_analog(
     if not movie_name:
         raise ValueError("movie_name cannot be empty")
     
-    logger.info(f"Detecting analog section times for '{movie_name}' in {zarr_path}")
+    logger.info(f"Detecting analog section times for '{movie_name}' in {hdf5_path}")
     
-    # Open Zarr
+    # Open HDF5
     try:
-        root = open_recording_zarr(zarr_path, mode="r+")
+        root = open_recording_hdf5(hdf5_path, mode="r+")
     except FileNotFoundError:
-        logger.error(f"Zarr not found: {zarr_path}")
+        logger.error(f"HDF5 not found: {hdf5_path}")
         raise
     
     # Validate required inputs exist
     # Check raw_ch1
     if "stimulus" not in root or "light_reference" not in root["stimulus"]:
+        root.close()
         raise MissingInputError(
-            "stimulus/light_reference group not found in Zarr",
+            "stimulus/light_reference group not found in HDF5",
             missing_input="stimulus/light_reference",
         )
     
     lr_group = root["stimulus"]["light_reference"]
     if "raw_ch1" not in lr_group:
+        root.close()
         raise MissingInputError(
             "raw_ch1 signal not found in stimulus/light_reference. "
             "This function requires the raw light reference at acquisition rate.",
@@ -576,6 +575,7 @@ def add_section_time_analog(
     
     # Check acquisition_rate
     if "metadata" not in root or "acquisition_rate" not in root["metadata"]:
+        root.close()
         raise MissingInputError(
             "acquisition_rate not found in metadata",
             missing_input="metadata/acquisition_rate",
@@ -592,8 +592,9 @@ def add_section_time_analog(
     if "section_time" in stimulus_group:
         st_group = stimulus_group["section_time"]
         if movie_name in st_group and not force:
+            root.close()
             raise FileExistsError(
-                f"section_time/{movie_name} already exists in {zarr_path}. "
+                f"section_time/{movie_name} already exists in {hdf5_path}. "
                 "Use force=True to overwrite."
             )
     
@@ -604,6 +605,7 @@ def add_section_time_analog(
     
     if len(onset_samples) == 0:
         logger.warning(f"No peaks detected with threshold={threshold_value}")
+        root.close()
         return False
     
     logger.info(f"Detected {len(onset_samples)} stimulus onsets")
@@ -652,7 +654,7 @@ def add_section_time_analog(
     logger.info(f"Computed section_time: {section_time.shape[0]} trials, "
                 f"sample range [{section_time[:, 0].min()}, {section_time[:, 1].max()}]")
     
-    # Write to Zarr
+    # Write to HDF5
     if "section_time" not in stimulus_group:
         st_group = stimulus_group.create_group("section_time")
     else:
@@ -661,12 +663,7 @@ def add_section_time_analog(
         if movie_name in st_group:
             del st_group[movie_name]
     
-    st_group.create_dataset(
-        movie_name,
-        data=section_time,
-        shape=section_time.shape,
-        dtype=section_time.dtype,
-    )
+    st_group.create_dataset(movie_name, data=section_time, dtype=section_time.dtype)
     
     logger.info(f"Wrote section_time/{movie_name} with {len(section_time)} trials")
     
@@ -679,21 +676,19 @@ def add_section_time_analog(
             if movie_name in lt_group:
                 del lt_group[movie_name]
         
-        lt_group.create_dataset(
-            movie_name,
-            data=light_template,
-            shape=light_template.shape,
-            dtype=light_template.dtype,
-        )
+        lt_group.create_dataset(movie_name, data=light_template, dtype=light_template.dtype)
         logger.info(f"Wrote light_template/{movie_name} with {len(light_template)} samples")
     
-    # Store metadata about analog section time computation
-    root.attrs[f"section_time_analog_{movie_name}"] = {
+    # Store metadata about analog section time computation (as JSON)
+    root.attrs[f"section_time_analog_{movie_name}"] = json.dumps({
         "threshold_value": threshold_value,
         "plot_duration": plot_duration,
         "n_trials": len(section_time),
-    }
+    })
     
-    logger.info(f"Analog section times added successfully to {zarr_path}")
+    # Close HDF5 file
+    root.close()
+    
+    logger.info(f"Analog section times added successfully to {hdf5_path}")
     return True
 

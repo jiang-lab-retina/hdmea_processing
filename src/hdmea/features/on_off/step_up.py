@@ -8,9 +8,8 @@ import logging
 from typing import Any, Dict, Optional
 
 import numpy as np
-import zarr
 
-from hdmea.features.base import FeatureExtractor
+from hdmea.features.base import FeatureExtractor, HDF5Group
 from hdmea.features.registry import FeatureRegistry
 
 
@@ -56,17 +55,17 @@ class StepUpFeatureExtractor(FeatureExtractor):
     
     def extract(
         self,
-        unit_data: zarr.Group,
-        stimulus_data: zarr.Group,
+        unit_data: HDF5Group,
+        stimulus_data: HDF5Group,
         config: Optional[Dict[str, Any]] = None,
-        metadata: Optional[zarr.Group] = None,
+        metadata: Optional[HDF5Group] = None,
     ) -> Dict[str, Any]:
         """
         Extract ON/OFF response features for a unit.
         
         Args:
-            unit_data: Zarr group for the unit
-            stimulus_data: Zarr group with stimulus information
+            unit_data: HDF5 group for the unit
+            stimulus_data: HDF5 group with stimulus information
             config: Optional runtime configuration
         
         Returns:
