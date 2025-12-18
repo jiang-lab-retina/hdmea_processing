@@ -1,0 +1,23 @@
+{
+    "name": "step_up_5s_5i_b0_30x",
+    "display_name": "Step Up 5s/5i B0 30x",
+    "generate_kwargs": {
+        "intensity": 255, 
+        "frames": 300,
+        "gap_frame": 300,
+        "repeat": 30, 
+        "baseline": 0
+    },
+    "section_kwargs": {
+        "start_frame": 240,
+        "trial_length_frame": 600,
+        "repeat": 30
+    },
+    "analysis_windows": {
+        "on_window_ms": [0, 500],
+        "off_window_ms": [0, 500],
+        "sustained_window_ms": [500, 5000]
+    },
+    "description": "Step-up intensity stimulus for ON/OFF response characterization. 5 seconds light on, 5 seconds light off, 30 repeats."
+}
+

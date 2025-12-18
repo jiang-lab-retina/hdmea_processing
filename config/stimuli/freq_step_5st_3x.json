@@ -1,16 +1,22 @@
 {
     "name": "freq_step_5st_3x",
+    "generate_kwargs": {
     "display_name": "Frequency Steps (5 steps, 3x)",
-    "movie_length_frames": 900,
-    "frame_rate_hz": 60.0,
-    "num_repeats": 3,
-    "test_frequencies_hz": [0.5, 1, 2, 4, 8],
-    "sections": {
-        "freq_0.5hz": [0, 180],
-        "freq_1hz": [180, 360],
-        "freq_2hz": [360, 540],
-        "freq_4hz": [540, 720],
-        "freq_8hz": [720, 900]
+        "freq_list": [0.5, 1, 2, 4, 10],
+        "break_intensity": 127,
+        "frame_duration": 4,
+        "break_duration": 1,
+        "repeat": 3
+    },
+    "section_kwargs": {
+        "start_frame": 30,
+        "trial_length_frame": 1500,
+        "repeat": 3
+    },
+    "analysis_windows": {
+        "on_window_ms": [0, 500],
+        "off_window_ms": [0, 500],
+        "sustained_window_ms": [500, 5000]
     },
     "description": "Temporal frequency modulation for frequency tuning characterization."
 }

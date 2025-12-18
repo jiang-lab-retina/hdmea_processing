@@ -100,6 +100,13 @@ if 'spike_times_sectioned' in first_unit:
             print(f'  {movie}/full_spike_times: count={len(full)}')
             if len(full) > 0:
                 print(f'    range=[{full.min():,} - {full.max():,}]')
+        if 'trials_spike_times' in movie_group:
+            trials = movie_group['trials_spike_times']
+            trial_ids = list(trials.keys())
+            print(f'  {movie}/trials_spike_times: {len(trial_ids)} trials')
+            for tid in trial_ids[:2]:
+                trial_data = trials[tid][:]
+                print(f'    trial {tid}: count={len(trial_data)}')
 else:
     print(f'{first_unit_id} has no spike_times_sectioned group')
 

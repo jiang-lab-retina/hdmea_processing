@@ -61,6 +61,32 @@ def _convert_frame_to_sample_index(frame: np.ndarray, frame_timestamps: np.ndarr
     return frame_timestamps[frame]
 
 
+def _convert_sample_index_to_frame(sample_index: np.ndarray, frame_timestamps: np.ndarray) -> np.ndarray:
+    """
+    Convert acquisition sample indices to frame numbers using frame_timestamps array.
+    
+    This is the inverse of _convert_frame_to_sample_index(). Given sample indices,
+    find the corresponding display frame numbers by searching in frame_timestamps.
+    
+    Args:
+        sample_index: Array of acquisition sample indices
+        frame_timestamps: Array of sample indices for each display frame
+    
+    Returns:
+        Array of frame numbers corresponding to sample indices.
+        For sample indices between frames, returns the frame that started
+        at or before the sample index (floor behavior).
+    """
+    sample_index = np.array(sample_index).astype(int)
+    # Use searchsorted to find insertion points, then subtract 1 to get floor frame
+    # searchsorted returns index where sample_index would be inserted to maintain order
+    # side='right' means: return index after any existing entries equal to sample_index
+    frame = np.searchsorted(frame_timestamps, sample_index, side='right') - 1
+    # Clip to valid frame range
+    frame = np.clip(frame, 0, len(frame_timestamps) - 1)
+    return frame
+
+
 def _sample_to_nearest_frame(
     sample_idx: Union[int, np.ndarray],
     frame_timestamps: np.ndarray,

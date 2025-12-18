@@ -1,0 +1,17 @@
+{
+    "name": "freq_step_5st_3x",
+    "display_name": "Frequency Steps (5 steps, 3x)",
+    "movie_length_frames": 900,
+    "frame_rate_hz": 60.0,
+    "num_repeats": 3,
+    "test_frequencies_hz": [0.5, 1, 2, 4, 8],
+    "sections": {
+        "freq_0.5hz": [0, 180],
+        "freq_1hz": [180, 360],
+        "freq_2hz": [360, 540],
+        "freq_4hz": [540, 720],
+        "freq_8hz": [720, 900]
+    },
+    "description": "Temporal frequency modulation for frequency tuning characterization."
+}
+

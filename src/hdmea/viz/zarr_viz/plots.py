@@ -48,6 +48,7 @@ def create_plot(
     sampled: bool = False,
     plot_type: Literal["line", "histogram"] = "line",
     acquisition_rate: Optional[float] = None,
+    x_limits: Optional[tuple[float, float]] = None,
 ) -> go.Figure:
     """Create appropriate plot based on array dimensions.
 
@@ -58,6 +59,7 @@ def create_plot(
         sampled: Whether data was sampled (for title annotation).
         plot_type: For 1D arrays, "line" for line plot or "histogram" for histogram.
         acquisition_rate: Data acquisition rate in Hz (used for histogram bin calculation).
+        x_limits: Optional (min, max) tuple to set x-axis range (for histograms).
 
     Returns:
         Plotly Figure object.
@@ -85,7 +87,7 @@ def create_plot(
         # 1D array - line plot or histogram
         data = sample_array(array)
         if plot_type == "histogram":
-            fig = plot_1d_histogram(data, title, acquisition_rate=acquisition_rate)
+            fig = plot_1d_histogram(data, title, acquisition_rate=acquisition_rate, x_limits=x_limits)
         else:
             fig = plot_1d(data, title)
         if sampled or len(data) < array.shape[0]:
@@ -160,6 +162,7 @@ def plot_1d_histogram(
     data: np.ndarray, 
     title: str = "", 
     acquisition_rate: Optional[float] = None,
+    x_limits: Optional[tuple[float, float]] = None,
 ) -> go.Figure:
     """Create histogram for 1D data with 100 ms bins.
 
@@ -168,6 +171,7 @@ def plot_1d_histogram(
         title: Plot title.
         acquisition_rate: Data acquisition rate in Hz. Used to calculate 
                          bin width as acquisition_rate × 0.1 (100 ms worth of samples).
+        x_limits: Optional (min, max) tuple to set x-axis range.
 
     Returns:
         Plotly Figure with histogram.
@@ -235,6 +239,10 @@ def plot_1d_histogram(
             font=dict(size=11, color="#999999"),
             xanchor="right",
         )
+
+    # Apply x-axis limits if provided
+    if x_limits is not None:
+        fig.update_xaxes(range=[x_limits[0], x_limits[1]])
 
     return fig
 

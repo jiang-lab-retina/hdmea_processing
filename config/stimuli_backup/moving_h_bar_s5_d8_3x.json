@@ -1,0 +1,21 @@
+{
+    "name": "moving_h_bar_s5_d8_3x",
+    "display_name": "Moving Horizontal Bar (8 directions, 3x)",
+    "movie_length_frames": 480,
+    "frame_rate_hz": 60.0,
+    "num_repeats": 3,
+    "num_directions": 8,
+    "bar_speed": 5,
+    "sections": {
+        "direction_0": [0, 60],
+        "direction_45": [60, 120],
+        "direction_90": [120, 180],
+        "direction_135": [180, 240],
+        "direction_180": [240, 300],
+        "direction_225": [300, 360],
+        "direction_270": [360, 420],
+        "direction_315": [420, 480]
+    },
+    "description": "Moving horizontal bar at 8 directions for direction selectivity analysis."
+}
+

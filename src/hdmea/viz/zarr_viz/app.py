@@ -126,6 +126,8 @@ def init_session_state() -> None:
         st.session_state.browser_path = str(Path.home())
     if "plot_type" not in st.session_state:
         st.session_state.plot_type = "line"  # "line" or "histogram"
+    if "use_trial_xlim" not in st.session_state:
+        st.session_state.use_trial_xlim = True  # Use trial boundaries as x-limit (selected by default)
 
 
 def add_to_recent_files(path: str, max_recent: int = 10) -> None:
@@ -434,6 +436,15 @@ def render_tree_sidebar(root: TreeNode, level: int = 0) -> None:
         <style>
         /* ===== COMPACT FILE BROWSER TREE ===== */
         
+        /* Force left-alignment on sidebar container */
+        section[data-testid="stSidebar"] {
+            text-align: left !important;
+        }
+        section[data-testid="stSidebar"] > div {
+            text-align: left !important;
+            align-items: flex-start !important;
+        }
+        
         /* Remove gaps between elements */
         section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
             gap: 0 !important;
@@ -450,14 +461,16 @@ def render_tree_sidebar(root: TreeNode, level: int = 0) -> None:
         }
         section[data-testid="stSidebar"] .stButton > div {
             width: 100% !important;
+            justify-content: flex-start !important;
+            text-align: left !important;
         }
         section[data-testid="stSidebar"] .stButton button {
             padding: 4px 8px !important;
             margin: 0 !important;
-            font-size: 13px !important;
-            min-height: 28px !important;
-            height: 28px !important;
-            line-height: 20px !important;
+            font-size: 11px !important;
+            min-height: 26px !important;
+            height: 26px !important;
+            line-height: 18px !important;
             display: flex !important;
             justify-content: flex-start !important;
             align-items: center !important;
@@ -468,9 +481,16 @@ def render_tree_sidebar(root: TreeNode, level: int = 0) -> None:
             background: transparent !important;
             color: #d4d4d4 !important;
             width: 100% !important;
+            max-width: 100% !important;
             box-shadow: none !important;
             white-space: nowrap !important;
             overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+        section[data-testid="stSidebar"] .stButton button > div {
+            justify-content: flex-start !important;
+            text-align: left !important;
+            width: 100% !important;
         }
         section[data-testid="stSidebar"] .stButton button:hover {
             background: rgba(255, 255, 255, 0.06) !important;
@@ -479,6 +499,16 @@ def render_tree_sidebar(root: TreeNode, level: int = 0) -> None:
             margin: 0 !important;
             padding: 0 !important;
             white-space: nowrap !important;
+            text-align: left !important;
+            width: 100% !important;
+            flex: 1 !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+        /* Target all inner elements */
+        section[data-testid="stSidebar"] .stButton button * {
+            text-align: left !important;
+            flex-shrink: 0 !important;
         }
         
         /* Selected item highlight */
@@ -503,6 +533,7 @@ def render_tree_sidebar(root: TreeNode, level: int = 0) -> None:
             padding: 6px;
             margin: 4px 0;
             border: 1px solid rgba(255, 255, 255, 0.06);
+            text-align: left !important;
         }
         .fb-card-inner {
             background: rgba(50, 52, 62, 0.85);
@@ -510,6 +541,7 @@ def render_tree_sidebar(root: TreeNode, level: int = 0) -> None:
             padding: 4px;
             margin: 3px 0 3px 16px;
             border: 1px solid rgba(255, 255, 255, 0.04);
+            text-align: left !important;
         }
         </style>
         """, unsafe_allow_html=True)
@@ -855,6 +887,44 @@ def render_array_view(node: TreeNode) -> None:
             else:
                 st.caption("⚠️ No acquisition_rate found in file attributes")
 
+        # Trial boundary x-limit option (only for histogram of individual trials)
+        x_limits = None
+        if is_1d and plot_type == "histogram":
+            # Check if this is an individual trial spike times dataset
+            # Pattern: units/*/spike_times_sectioned/*/trials_spike_times/{idx}
+            import re
+            trial_match = re.search(r'/spike_times_sectioned/([^/]+)/trials_spike_times/(\d+)$', node.path)
+            
+            if trial_match:
+                movie_name = trial_match.group(1)
+                trial_idx = int(trial_match.group(2))
+                
+                # Show checkbox for trial x-limit option
+                use_trial_xlim = st.checkbox(
+                    "Use trial boundaries as x-limit",
+                    value=st.session_state.use_trial_xlim,
+                    key="use_trial_xlim_checkbox",
+                    help="Set histogram x-axis to trial start/end times from trials_start_end",
+                )
+                st.session_state.use_trial_xlim = use_trial_xlim
+                
+                if use_trial_xlim:
+                    # Load trials_start_end from sibling dataset
+                    # Path: units/*/spike_times_sectioned/{movie_name}/trials_start_end
+                    parent_path = node.path.rsplit('/trials_spike_times/', 1)[0]
+                    trials_start_end_path = f"{parent_path}/trials_start_end"
+                    
+                    try:
+                        bounds_handle, bounds_data = _open_data_file(st.session_state.zarr_path, trials_start_end_path)
+                        bounds_array = np.asarray(bounds_data)
+                        if trial_idx < len(bounds_array):
+                            x_limits = (float(bounds_array[trial_idx, 0]), float(bounds_array[trial_idx, 1]))
+                            st.caption(f"📏 X-limits: [{x_limits[0]:.0f}, {x_limits[1]:.0f}] (trial {trial_idx})")
+                        if bounds_handle is not None:
+                            bounds_handle.close()
+                    except Exception as e:
+                        st.caption(f"⚠️ Could not load trial boundaries: {e}")
+
         # Generate plot
         try:
             title = f"{node.path}\nShape: {node.shape}, Type: {node.dtype}"
@@ -864,6 +934,7 @@ def render_array_view(node: TreeNode) -> None:
                 slice_indices=slice_indices, 
                 plot_type=plot_type,
                 acquisition_rate=acquisition_rate,
+                x_limits=x_limits,
             )
 
             # Display interactive plot

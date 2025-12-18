@@ -1,20 +1,12 @@
 {
     "name": "perfect_dense_noise_15x15_15hz_r42_3min",
     "display_name": "Dense Noise 15x15 (15Hz, 3min)",
-    "generate_kwargs": {
-        "duration": 180,
-        "col": 15,
-        "row": 15,
-        "seed": 42,
-        "movie_frame_rate": 15
-    },
-
-    "section_kwargs": {
-        "start_frame": 0,
-        "trial_length_frame": 10800,
-        "repeat": 1
-    },
-
+    "movie_length_frames": 2700,
+    "frame_rate_hz": 15.0,
+    "num_repeats": 1,
+    "grid_size": 15,
+    "random_seed": 42,
+    "duration_minutes": 3,
     "analysis_windows": {
         "sta_frames_before": 10,
         "sta_frames_after": 5
