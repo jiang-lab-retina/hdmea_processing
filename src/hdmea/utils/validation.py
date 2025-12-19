@@ -9,22 +9,23 @@ from typing import Optional, Union
 from hdmea.utils.exceptions import ConfigurationError
 
 
-# Dataset ID pattern: UPPERCASE letters followed by digits, optionally followed by underscore and date
-DATASET_ID_PATTERN = re.compile(r"^[A-Z]+\d+(_[\d-]+)?$")
+# Dataset ID pattern: any string without path-unsafe characters
+DATASET_ID_PATTERN = re.compile(r'^[^/\\:*?"<>|]+$')
 
 
 def validate_dataset_id(dataset_id: str) -> str:
     """
     Validate and normalize a dataset ID.
     
-    Dataset IDs must match pattern: UPPERCASE letters + digits + optional date suffix
-    Examples: JIANG009, JIANG009_2024-01-15
+    Dataset IDs can be any string without path-unsafe characters.
+    Trailing hyphens are stripped for consistency.
+    Examples: 2025.04.10-11.12.57-Rec, JIANG009_2024-01-15
     
     Args:
         dataset_id: Dataset identifier to validate
     
     Returns:
-        Validated dataset ID (unchanged if valid)
+        Validated dataset ID (trailing hyphens stripped)
     
     Raises:
         ConfigurationError: If dataset_id format is invalid
@@ -32,11 +33,16 @@ def validate_dataset_id(dataset_id: str) -> str:
     if not dataset_id:
         raise ConfigurationError("dataset_id cannot be empty")
     
+    # Strip trailing hyphens for consistency
+    dataset_id = dataset_id.rstrip("-")
+    
+    if not dataset_id:
+        raise ConfigurationError("dataset_id cannot be empty after stripping trailing hyphens")
+    
     if not DATASET_ID_PATTERN.match(dataset_id):
         raise ConfigurationError(
-            f"Invalid dataset_id format: '{dataset_id}'. "
-            f"Expected pattern: UPPERCASE letters + digits + optional date suffix "
-            f"(e.g., 'JIANG009' or 'JIANG009_2024-01-15')"
+            f"Invalid dataset_id: '{dataset_id}'. "
+            f"Dataset ID cannot contain path-unsafe characters (/, \\, :, *, ?, \", <, >, |)."
         )
     
     return dataset_id
@@ -146,14 +152,14 @@ def derive_dataset_id(cmcr_path: Optional[Path], cmtr_path: Optional[Path]) -> s
     """
     Derive dataset_id from file path if not provided.
     
-    Uses the stem of the first available file path.
+    Uses the stem of the first available file path, with trailing hyphens removed.
     
     Args:
         cmcr_path: Path to .cmcr file (or None)
         cmtr_path: Path to .cmtr file (or None)
     
     Returns:
-        Derived dataset ID
+        Derived dataset ID (original case, trailing hyphens stripped)
     
     Raises:
         ConfigurationError: If no path is available
@@ -163,6 +169,6 @@ def derive_dataset_id(cmcr_path: Optional[Path], cmtr_path: Optional[Path]) -> s
     if path is None:
         raise ConfigurationError("Cannot derive dataset_id: no file path provided")
     
-    # Use file stem as dataset_id
-    return path.stem.upper()
+    # Use file stem, remove trailing hyphens
+    return path.stem.rstrip("-")
 

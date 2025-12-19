@@ -25,6 +25,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 import numpy as np
+import plotly.graph_objects as go
 import streamlit as st
 import h5py
 
@@ -83,6 +84,47 @@ def _open_data_file(path: str, node_path: str = "/"):
         else:
             data = root
         return None, data  # Zarr doesn't need explicit close
+
+
+def _parse_unit_path(path: str) -> tuple:
+    """Parse a path to extract unit_id and sub_path if within units folder.
+    
+    Args:
+        path: Path like "/units/unit_005/features/noise_movie/sta" or "units/unit_005/..."
+        
+    Returns:
+        Tuple of (unit_id, sub_path) or (None, None) if not a unit path.
+        Example: ("unit_005", "features/noise_movie/sta")
+    """
+    import re
+    # Handle both "/units/..." and "units/..." formats
+    match = re.match(r'^/?units/([^/]+)(?:/(.+))?$', path)
+    if match:
+        unit_id = match.group(1)
+        sub_path = match.group(2) or ""
+        return unit_id, sub_path
+    return None, None
+
+
+def _get_unit_ids_from_tree(tree: "TreeNode") -> list:
+    """Get sorted list of unit IDs from tree structure.
+    
+    Args:
+        tree: Root TreeNode of the loaded file.
+        
+    Returns:
+        Sorted list of unit IDs (e.g., ["unit_000", "unit_001", ...])
+    """
+    if tree is None:
+        return []
+    
+    # Find the "units" child
+    for child in tree.children:
+        if child.name == "units":
+            return sorted([c.name for c in child.children])
+    
+    return []
+
 
 # =============================================================================
 # Page Configuration
@@ -267,6 +309,19 @@ def render_sidebar() -> None:
                         st.session_state.tree = None
                 else:
                     st.warning("Please enter a zarr path")
+        
+        # Reload button (only shown when data is loaded)
+        if st.session_state.tree is not None:
+            if st.button("🔄 Reload", use_container_width=True):
+                # Preserve current selection path
+                current_path = st.session_state.selected_path
+                try:
+                    st.session_state.tree = load_tree(st.session_state.zarr_path)
+                    st.session_state.selected_path = current_path
+                    st.session_state.last_error = None
+                except Exception as e:
+                    st.session_state.last_error = f"Error reloading: {e}"
+                st.rerun()
 
         # Web-based file browser (toggle display)
         if st.session_state.show_browser:
@@ -713,6 +768,31 @@ def render_group_view(node: TreeNode) -> None:
         node: TreeNode representing a group.
     """
     st.subheader(f"📁 {node.path}")
+    
+    # Unit navigation buttons (if viewing a unit path)
+    unit_id, sub_path = _parse_unit_path(node.path)
+    if unit_id is not None:
+        unit_ids = _get_unit_ids_from_tree(st.session_state.tree)
+        if unit_id in unit_ids:
+            current_idx = unit_ids.index(unit_id)
+            
+            col_prev, col_info, col_next = st.columns([1, 2, 1])
+            with col_prev:
+                if current_idx > 0:
+                    if st.button("⬅️ Previous", use_container_width=True, key="prev_group"):
+                        new_unit = unit_ids[current_idx - 1]
+                        new_path = f"/units/{new_unit}/{sub_path}" if sub_path else f"/units/{new_unit}"
+                        st.session_state.selected_path = new_path
+                        st.rerun()
+            with col_info:
+                st.caption(f"Unit {current_idx + 1} of {len(unit_ids)}")
+            with col_next:
+                if current_idx < len(unit_ids) - 1:
+                    if st.button("➡️ Next", use_container_width=True, key="next_group"):
+                        new_unit = unit_ids[current_idx + 1]
+                        new_path = f"/units/{new_unit}/{sub_path}" if sub_path else f"/units/{new_unit}"
+                        st.session_state.selected_path = new_path
+                        st.rerun()
 
     # Get the group object
     file_handle = None
@@ -782,6 +862,31 @@ def render_array_view(node: TreeNode) -> None:
         node: TreeNode representing an array.
     """
     st.subheader(f"📊 {node.path}")
+    
+    # Unit navigation buttons (if viewing a unit path)
+    unit_id, sub_path = _parse_unit_path(node.path)
+    if unit_id is not None:
+        unit_ids = _get_unit_ids_from_tree(st.session_state.tree)
+        if unit_id in unit_ids:
+            current_idx = unit_ids.index(unit_id)
+            
+            col_prev, col_info, col_next = st.columns([1, 2, 1])
+            with col_prev:
+                if current_idx > 0:
+                    if st.button("⬅️ Previous", use_container_width=True, key="prev_array"):
+                        new_unit = unit_ids[current_idx - 1]
+                        new_path = f"/units/{new_unit}/{sub_path}" if sub_path else f"/units/{new_unit}"
+                        st.session_state.selected_path = new_path
+                        st.rerun()
+            with col_info:
+                st.caption(f"Unit {current_idx + 1} of {len(unit_ids)}")
+            with col_next:
+                if current_idx < len(unit_ids) - 1:
+                    if st.button("➡️ Next", use_container_width=True, key="next_array"):
+                        new_unit = unit_ids[current_idx + 1]
+                        new_path = f"/units/{new_unit}/{sub_path}" if sub_path else f"/units/{new_unit}"
+                        st.session_state.selected_path = new_path
+                        st.rerun()
 
     # Display basic info
     col1, col2, col3 = st.columns(3)
@@ -815,7 +920,66 @@ def render_array_view(node: TreeNode) -> None:
 
         # Handle ND arrays - show dimension sliders
         slice_indices = {}
-        if node.shape and len(node.shape) > 2:
+        slide_dim = 0  # Default slide dimension
+        use_blur = False  # Default: no blur for non-3D arrays
+        blur_sigma = 2.0
+        color_range = None  # Default: auto color range
+        
+        if node.shape and len(node.shape) == 3:
+            # For 3D arrays: allow choosing which dimension to slide through
+            st.markdown("**Dimension Slicing**")
+            dim_options = [f"Dim {i} (size {node.shape[i]})" for i in range(3)]
+            
+            # Get saved slide dimension or default to 0
+            saved_slide_dim = st.session_state.slice_config.get(f"{node.path}_slide_dim", 0)
+            
+            slide_dim = st.selectbox(
+                "Slide dimension",
+                options=[0, 1, 2],
+                format_func=lambda x: dim_options[x],
+                index=saved_slide_dim,
+                key=f"slide_dim_{node.path}",
+            )
+            st.session_state.slice_config[f"{node.path}_slide_dim"] = slide_dim
+            
+            # Create slider for the selected dimension
+            max_val = node.shape[slide_dim] - 1
+            slice_indices[slide_dim] = st.slider(
+                f"Slice index (Dim {slide_dim})",
+                min_value=0,
+                max_value=max_val,
+                value=st.session_state.slice_config.get(f"{node.path}_dim{slide_dim}", 0),
+                key=f"slice_{node.path}_{slide_dim}",
+            )
+            st.session_state.slice_config[f"{node.path}_dim{slide_dim}"] = slice_indices[slide_dim]
+            
+            # Gaussian blur options for 3D arrays
+            st.markdown("**Display Options**")
+            use_blur = st.checkbox(
+                "Apply Gaussian Blur",
+                value=st.session_state.slice_config.get(f"{node.path}_use_blur", True),
+                key=f"blur_{node.path}",
+            )
+            st.session_state.slice_config[f"{node.path}_use_blur"] = use_blur
+            
+            blur_sigma = st.number_input(
+                "Blur Sigma",
+                min_value=0.1,
+                max_value=10.0,
+                value=st.session_state.slice_config.get(f"{node.path}_blur_sigma", 2.0),
+                step=0.1,
+                key=f"sigma_{node.path}",
+                disabled=not use_blur,
+            )
+            st.session_state.slice_config[f"{node.path}_blur_sigma"] = blur_sigma
+            
+            # Compute global min/max for consistent color scale across all slices
+            global_min = float(np.min(array))
+            global_max = float(np.max(array))
+            color_range = (global_min, global_max)
+            
+        elif node.shape and len(node.shape) > 3:
+            # For 4D+ arrays: keep original behavior with sliders for dims 2+
             st.markdown("**Dimension Slicing** (for dimensions > 2)")
             cols = st.columns(min(len(node.shape) - 2, 4))
             for i, dim in enumerate(range(2, len(node.shape))):
@@ -935,6 +1099,9 @@ def render_array_view(node: TreeNode) -> None:
                 plot_type=plot_type,
                 acquisition_rate=acquisition_rate,
                 x_limits=x_limits,
+                slide_dim=slide_dim,
+                blur_sigma=blur_sigma if use_blur else None,
+                color_range=color_range,
             )
 
             # Display interactive plot
@@ -943,6 +1110,53 @@ def render_array_view(node: TreeNode) -> None:
                 "modeBarButtonsToRemove": ["lasso2d", "select2d"],
                 "displaylogo": False,
             })
+            
+            # For 3D arrays: show peak location time series plot
+            if node.shape and len(node.shape) == 3:
+                st.markdown("---")
+                st.markdown("### 📈 Peak Location Time Series")
+                
+                # Find (x, y) with largest dynamic range along t axis
+                array_data = np.asarray(array)
+                dynamic_range = np.max(array_data, axis=0) - np.min(array_data, axis=0)
+                peak_idx = np.unravel_index(np.argmax(dynamic_range), dynamic_range.shape)
+                peak_x, peak_y = peak_idx
+                
+                # Extract time series at peak location
+                time_series = array_data[:, peak_x, peak_y]
+                
+                # Display peak location info
+                st.markdown(
+                    f"**Peak Location**: (x={peak_x}, y={peak_y}) | "
+                    f"**Dynamic Range**: {dynamic_range[peak_idx]:.4f} | "
+                    f"**Min**: {time_series.min():.4f} | **Max**: {time_series.max():.4f}"
+                )
+                
+                # Create line plot
+                fig_line = go.Figure()
+                fig_line.add_trace(go.Scatter(
+                    y=time_series,
+                    mode='lines',
+                    line=dict(color='#1f77b4', width=1.5),
+                    hovertemplate="Frame: %{x}<br>Value: %{y:.4f}<extra></extra>",
+                ))
+                fig_line.update_layout(
+                    title=dict(
+                        text=f"Time Series at Peak Location ({peak_x}, {peak_y})",
+                        x=0.5,
+                        xanchor="center",
+                    ),
+                    xaxis_title="Frame (t)",
+                    yaxis_title="Value",
+                    template="plotly_white",
+                    margin=dict(l=60, r=40, t=60, b=60),
+                    height=300,
+                )
+                st.plotly_chart(fig_line, use_container_width=True, config={
+                    "displayModeBar": True,
+                    "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+                    "displaylogo": False,
+                })
 
             # Export buttons
             st.markdown("### 💾 Export")

@@ -9,8 +9,9 @@
         "movie_frame_rate": 15
     },
 
+    
     "section_kwargs": {
-        "start_frame": 0,
+        "start_frame": 0, 
         "trial_length_frame": 10800,
         "repeat": 1
     },
@@ -19,6 +20,7 @@
         "sta_frames_before": 10,
         "sta_frames_after": 5
     },
-    "description": "15x15 binary dense noise at 15Hz for receptive field mapping via STA."
+    "description": "15x15 binary dense noise at 15Hz for receptive field mapping via STA.",
+    "note": "PRE_MARGIN_FRAME_NUM = 60 which is hardcoded in recording padding."
 }
 

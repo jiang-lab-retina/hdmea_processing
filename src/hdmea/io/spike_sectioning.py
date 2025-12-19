@@ -47,7 +47,7 @@ import h5py
 import numpy as np
 from tqdm import tqdm
 
-from hdmea.io.section_time import _convert_frame_to_sample_index, _convert_sample_index_to_frame
+from hdmea.io.section_time import convert_frame_to_sample_index, convert_sample_index_to_frame
 
 from hdmea.io.hdf5_store import open_recording_hdf5
 from hdmea.io.section_time import PRE_MARGIN_FRAME_NUM, POST_MARGIN_FRAME_NUM
@@ -631,7 +631,7 @@ def section_spike_times(
             continue
         
         # Get frame start from section_time (convert first sample to frame)
-        section_frame_start = int(_convert_sample_index_to_frame(
+        section_frame_start = int(convert_sample_index_to_frame(
             np.array([section_time[0, 0]]), frame_timestamps
         )[0])
         

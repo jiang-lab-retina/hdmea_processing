@@ -40,7 +40,7 @@ DEFAULT_MOVIE_LENGTH_PATH: str = "//Jiangfs1/fs_1_2_data/Python_Project/Design_S
 # Helper Functions
 # =============================================================================
 
-def _convert_frame_to_sample_index(frame: np.ndarray, frame_timestamps: np.ndarray) -> np.ndarray:
+def convert_frame_to_sample_index(frame: np.ndarray, frame_timestamps: np.ndarray) -> np.ndarray:
     """
     Convert frame numbers to acquisition sample indices using frame_timestamps array.
     
@@ -61,11 +61,11 @@ def _convert_frame_to_sample_index(frame: np.ndarray, frame_timestamps: np.ndarr
     return frame_timestamps[frame]
 
 
-def _convert_sample_index_to_frame(sample_index: np.ndarray, frame_timestamps: np.ndarray) -> np.ndarray:
+def convert_sample_index_to_frame(sample_index: np.ndarray, frame_timestamps: np.ndarray) -> np.ndarray:
     """
     Convert acquisition sample indices to frame numbers using frame_timestamps array.
     
-    This is the inverse of _convert_frame_to_sample_index(). Given sample indices,
+    This is the inverse of convert_frame_to_sample_index(). Given sample indices,
     find the corresponding display frame numbers by searching in frame_timestamps.
     
     Args:
@@ -95,7 +95,7 @@ def _sample_to_nearest_frame(
     Convert acquisition sample index(es) to nearest display frame index(es).
     
     Uses binary search for O(log n) lookup per sample. This is the inverse
-    operation of _convert_frame_to_sample_index().
+    operation of convert_frame_to_sample_index().
     
     Args:
         sample_idx: Sample index or array of sample indices
@@ -260,8 +260,8 @@ def _get_movie_start_end_frame(
         single_movie_light_template = None
         if light_reference_raw is not None and len(frame_timestamps) > 0:
             # Convert display frame numbers to acquisition sample indices
-            start_sample_idx = int(_convert_frame_to_sample_index(np.array([start_frame]), frame_timestamps)[0])
-            end_sample_idx = int(_convert_frame_to_sample_index(np.array([end_frame]), frame_timestamps)[0])
+            start_sample_idx = int(convert_frame_to_sample_index(np.array([start_frame]), frame_timestamps)[0])
+            end_sample_idx = int(convert_frame_to_sample_index(np.array([end_frame]), frame_timestamps)[0])
             
             # Clip to available raw data
             start_sample_idx = max(0, start_sample_idx)

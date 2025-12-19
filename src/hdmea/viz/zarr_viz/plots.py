@@ -49,6 +49,9 @@ def create_plot(
     plot_type: Literal["line", "histogram"] = "line",
     acquisition_rate: Optional[float] = None,
     x_limits: Optional[tuple[float, float]] = None,
+    slide_dim: int = 0,
+    blur_sigma: Optional[float] = None,
+    color_range: Optional[tuple[float, float]] = None,
 ) -> go.Figure:
     """Create appropriate plot based on array dimensions.
 
@@ -60,6 +63,9 @@ def create_plot(
         plot_type: For 1D arrays, "line" for line plot or "histogram" for histogram.
         acquisition_rate: Data acquisition rate in Hz (used for histogram bin calculation).
         x_limits: Optional (min, max) tuple to set x-axis range (for histograms).
+        slide_dim: For 3D arrays, the dimension to slice through (default: 0).
+        blur_sigma: Gaussian blur sigma (None = no blur).
+        color_range: (min, max) tuple for consistent color scale.
 
     Returns:
         Plotly Figure object.
@@ -104,7 +110,8 @@ def create_plot(
 
     else:
         # ND array - slice to 2D and plot
-        return plot_nd(array, title, slice_indices)
+        return plot_nd(array, title, slice_indices, slide_dim=slide_dim, 
+                       blur_sigma=blur_sigma, color_range=color_range)
 
 
 # =============================================================================
@@ -252,12 +259,17 @@ def plot_1d_histogram(
 # =============================================================================
 
 
-def plot_2d(data: np.ndarray, title: str = "") -> go.Figure:
+def plot_2d(
+    data: np.ndarray, 
+    title: str = "",
+    color_range: Optional[tuple[float, float]] = None,
+) -> go.Figure:
     """Create heatmap for 2D data.
 
     Args:
         data: 2D numpy array.
         title: Plot title.
+        color_range: Optional (min, max) tuple for consistent color scale.
 
     Returns:
         Plotly Figure with heatmap.
@@ -272,13 +284,17 @@ def plot_2d(data: np.ndarray, title: str = "") -> go.Figure:
     
     fig = go.Figure()
 
-    fig.add_trace(
-        go.Heatmap(
-            z=z_data,
-            colorscale="Viridis",
-            hovertemplate="Row: %{y}<br>Col: %{x}<br>Value: %{z:.6g}<extra></extra>",
-        )
-    )
+    # Build heatmap kwargs with optional color range
+    heatmap_kwargs = {
+        "z": z_data,
+        "colorscale": "Jet",
+        "hovertemplate": "Row: %{y}<br>Col: %{x}<br>Value: %{z:.6g}<extra></extra>",
+    }
+    if color_range is not None:
+        heatmap_kwargs["zmin"] = color_range[0]
+        heatmap_kwargs["zmax"] = color_range[1]
+
+    fig.add_trace(go.Heatmap(**heatmap_kwargs))
 
     fig.update_layout(
         title=dict(text=title, x=0.5, xanchor="center"),
@@ -306,6 +322,9 @@ def plot_nd(
     array: ArrayLike,
     title: str = "",
     slice_indices: Optional[dict[int, int]] = None,
+    slide_dim: int = 0,
+    blur_sigma: Optional[float] = None,
+    color_range: Optional[tuple[float, float]] = None,
 ) -> go.Figure:
     """Create 2D heatmap from ND array using slicing.
 
@@ -316,8 +335,12 @@ def plot_nd(
         array: ND HDF5 dataset or numpy array (ndim > 2).
         title: Plot title.
         slice_indices: Dict mapping dimension index to slice position.
-                      Dimensions 0 and 1 are used for the 2D plot.
-                      Other dimensions must have indices specified.
+        slide_dim: For 3D arrays, the dimension to slice through (default: 0).
+                  The other two dimensions form the 2D plot.
+                  For 4D+ arrays, dimensions 0 and 1 are used for the plot,
+                  and other dimensions are sliced.
+        blur_sigma: Gaussian blur sigma (None = no blur).
+        color_range: (min, max) tuple for consistent color scale.
 
     Returns:
         Plotly Figure with 2D heatmap of the sliced data.
@@ -329,30 +352,52 @@ def plot_nd(
 
     # Build slice tuple
     slices = []
-    for dim in range(ndim):
-        if dim < 2:
-            # First two dimensions are plotted
-            slices.append(slice(None))
-        else:
-            # Other dimensions need an index
-            idx = slice_indices.get(dim, 0)
-            idx = max(0, min(idx, array.shape[dim] - 1))
-            slices.append(idx)
+    
+    if ndim == 3:
+        # For 3D arrays: slide_dim gets indexed, other two dims form the 2D plot
+        for dim in range(ndim):
+            if dim == slide_dim:
+                # This dimension is sliced through
+                idx = slice_indices.get(dim, 0)
+                idx = max(0, min(idx, array.shape[dim] - 1))
+                slices.append(idx)
+            else:
+                # This dimension is part of the 2D plot
+                slices.append(slice(None))
+    else:
+        # For 4D+ arrays: keep original behavior (dims 0,1 plotted, others sliced)
+        for dim in range(ndim):
+            if dim < 2:
+                # First two dimensions are plotted
+                slices.append(slice(None))
+            else:
+                # Other dimensions need an index
+                idx = slice_indices.get(dim, 0)
+                idx = max(0, min(idx, array.shape[dim] - 1))
+                slices.append(idx)
 
     # Extract 2D slice
     data_2d = np.asarray(array[tuple(slices)])
 
     # Sample if needed
     data_2d = sample_array_2d(data_2d)
+    
+    # Apply Gaussian blur if requested
+    if blur_sigma is not None and blur_sigma > 0:
+        from scipy.ndimage import gaussian_filter
+        data_2d = gaussian_filter(data_2d, sigma=blur_sigma)
 
     # Update title with slice info
-    slice_info = ", ".join(
-        f"dim{d}={slice_indices.get(d, 0)}"
-        for d in range(2, ndim)
-    )
+    if ndim == 3:
+        slice_info = f"dim{slide_dim}={slice_indices.get(slide_dim, 0)}"
+    else:
+        slice_info = ", ".join(
+            f"dim{d}={slice_indices.get(d, 0)}"
+            for d in range(2, ndim)
+        )
     full_title = f"{title}\nSlice: [{slice_info}]" if slice_info else title
 
-    return plot_2d(data_2d, full_title)
+    return plot_2d(data_2d, full_title, color_range=color_range)
 
 
 def sample_array_2d(data: np.ndarray, max_size: int = 2000) -> np.ndarray:

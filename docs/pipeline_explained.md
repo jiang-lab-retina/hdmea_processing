@@ -1,6 +1,6 @@
 # HD-MEA Pipeline: Current Flow
 
-**Last Updated**: 2025-12-16  
+**Last Updated**: 2025-12-18  
 **Pipeline Version**: 0.1.0
 
 ## Overview
@@ -56,6 +56,10 @@ for details.
 │  │  │   ├── {unit_id}/                                              │    │
 │  │  │   │   ├── spike_times       # Spike timestamps (sample idx)   │    │
 │  │  │   │   ├── spike_times_sectioned/  # Sectioned by movie trial  │    │
+│  │  │   │   │   └── {movie_name}/                                   │    │
+│  │  │   │   │       ├── full_spike_times    # All trials combined   │    │
+│  │  │   │   │       ├── trials_spike_times/ # Per-trial arrays      │    │
+│  │  │   │   │       └── trials_start_end    # Trial boundaries      │    │
 │  │  │   │   ├── waveform          # Average waveform                │    │
 │  │  │   │   ├── firing_rate_10hz  # Binned firing rate              │    │
 │  │  │   │   └── features/         # Extracted features (Stage 2)    │    │
@@ -97,6 +101,7 @@ for details.
 │  │    • moving_bar - Direction selectivity                         │     │
 │  │    • green_blue - Chromatic response features                   │     │
 │  │    • rgc_classifier - RGC type classification                   │     │
+│  │    • sta - Spike Triggered Average (receptive field mapping)    │     │
 │  └────────────────────────────────────────────────────────────────┘     │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -129,7 +134,9 @@ for details.
 │  │  • Extract spikes within trial boundaries (with padding)       │     │
 │  │  • Store full_spike_times (all trials combined)                │     │
 │  │  • Store trials_spike_times (per-trial arrays)                 │     │
+│  │  • Store trials_start_end (trial boundaries as sample indices) │     │
 │  │  • Supports pad_margin (pre/post) for extended boundaries      │     │
+│  │  • Supports JSON config files from config/stimuli/             │     │
 │  │  • Write to units/{unit_id}/spike_times_sectioned/{movie}/     │     │
 │  └────────────────────────────────────────────────────────────────┘     │
 │                                                                          │
@@ -147,6 +154,7 @@ for details.
 | `add_section_time()` | `hdmea.io.section_time` | Add movie section timing (playlist-based) |
 | `add_section_time_analog()` | `hdmea.io.section_time` | Add movie section timing (peak detection) |
 | `section_spike_times()` | `hdmea.io.spike_sectioning` | Section spike times by trial boundaries |
+| `compute_sta()` | `hdmea.features.sta` | Compute Spike Triggered Average for noise stimulus |
 | `run_flow()` | `hdmea.pipeline` | Run a named flow (Stage 1 + Stage 2) |
 
 ### Example Usage
@@ -205,12 +213,33 @@ Named flows are defined in `config/flows/{flow_name}.json` and specify:
 - Default parameters for extractors
 - Stage-specific settings
 
+### Stimulus Configuration (JSON)
+
+Spike sectioning can use JSON config files from `config/stimuli/{movie_name}.json`:
+
+```json
+{
+  "section_kwargs": {
+    "start_frame": 0,
+    "trial_length_frame": 2700,
+    "repeat": 1
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `start_frame` | Frame offset from `section_frame_start + PRE_MARGIN_FRAME_NUM` |
+| `trial_length_frame` | Duration of each trial in display frames |
+| `repeat` | Number of trial repetitions |
+
 ### Default Paths
 
 | Path | Purpose |
 |------|---------|
 | `artifacts/` | Default output directory for Zarr archives |
 | `config/flows/` | Flow configuration files |
+| `config/stimuli/` | Stimulus-specific JSON configuration files |
 | `//Jiangfs1/.../playlist.csv` | Default playlist configuration |
 | `//Jiangfs1/.../movie_length.csv` | Default movie length configuration |
 
@@ -391,6 +420,19 @@ Last onset: sample 21,357,695 → end would be 23,757,695 (within range ✓)
 ```
 
 **Light template handling**: Truncated sections are included in template averaging using `np.nanmean` with `zip_longest` to handle variable lengths.
+
+### Recording Padding Constants
+
+All stimulations use fixed padding margins defined in `hdmea.io.section_time`:
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `PRE_MARGIN_FRAME_NUM` | 60 frames | Padding before stimulus onset |
+| `POST_MARGIN_FRAME_NUM` | 120 frames | Padding after stimulus offset |
+
+These margins are added during recording to ensure complete stimulus capture.
+When sectioning spikes using JSON configs, `start_frame` is relative to
+`section_frame_start + PRE_MARGIN_FRAME_NUM`.
 
 ## Related Documentation
 

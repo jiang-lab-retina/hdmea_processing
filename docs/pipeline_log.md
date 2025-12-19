@@ -5,6 +5,53 @@ Entries are in reverse chronological order (newest first).
 
 ---
 
+## [2025-12-18] Spike Triggered Average (STA) Computation
+
+**Change**: Added `compute_sta()` function to compute Spike Triggered Average from noise movie stimuli for receptive field mapping.
+
+**Key Features**:
+- Automatic noise movie detection (case-insensitive search for "noise" in movie names)
+- Spike time conversion from sampling indices to movie frame numbers
+- Vectorized window extraction for high performance
+- Multiprocessing support with 80% of CPU cores
+- Progress bar during computation
+- Edge effect handling (spikes near boundaries excluded)
+- Retry logic for failed units (retry once, then skip)
+- Configurable `cover_range` parameter (default: -60 to 0 frames)
+
+**Affected**:
+- `hdmea.features.sta` - new module with `compute_sta()` function
+- `hdmea.features.__init__` - exports `compute_sta`, `STAResult`
+
+**HDF5 Structure**:
+```
+units/{unit_id}/
+└── features/
+    └── {noise_movie_name}/
+        └── sta                    # 3D array (time × height × width)
+            └── .attrs: {n_spikes, n_spikes_excluded, cover_range, dtype_warning}
+```
+
+**Usage**:
+```python
+from hdmea.features import compute_sta
+
+result = compute_sta(
+    "artifacts/recording.h5",
+    cover_range=(-60, 0),      # 60 frames before spike
+    use_multiprocessing=True,  # Use 80% of CPU cores
+    frame_rate=15.0,           # Movie frame rate
+    force=True,                # Overwrite existing
+)
+print(f"Processed {result.units_processed} units in {result.elapsed_seconds:.1f}s")
+```
+
+**Stimuli Directory**: `M:\Python_Project\Data_Processing_2025\Design_Stimulation_Pattern\Data\Stimulations\{movie_name}.npy`
+
+**PR/Branch**: `009-sta-computation`
+
+---
+
 ## [2025-12-17] Spike Times Unit Conversion and Stimulation Sectioning
 
 **Change**: Two-part feature implementing spike timestamp standardization and trial-based sectioning:

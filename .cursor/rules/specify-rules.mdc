@@ -9,6 +9,10 @@ Auto-generated from all feature plans. Last updated: 2025-12-15
 - Zarr v3 archives (existing schema) (005-analog-section-time)
 - Python 3.11 + zarr, numpy, scipy.signal.find_peaks (005-analog-section-time)
 - Zarr (section_time arrays under `stimulus/section_time/{movie_name}`) (005-analog-section-time)
+- Python 3.11+ + h5py, numpy, tqdm, multiprocessing (stdlib) (009-sta-computation)
+- HDF5 (.h5 files) - features stored in `units/{unit_id}/features/{movie_name}/sta` (009-sta-computation)
+- Python 3.11+ + numpy, h5py, tqdm, multiprocessing (stdlib) (009-sta-computation)
+- HDF5 (existing artifact format per constitution) (009-sta-computation)
 
 - Python 3.11+ + Streamlit (GUI framework), Plotly (interactive plots), zarr (data access) (002-zarr-viz-gui)
 
@@ -28,9 +32,9 @@ cd src; pytest; ruff check .
 Python 3.11+: Follow standard conventions
 
 ## Recent Changes
+- 009-sta-computation: Added Python 3.11+ + numpy, h5py, tqdm, multiprocessing (stdlib)
+- 009-sta-computation: Added Python 3.11+ + h5py, numpy, tqdm, multiprocessing (stdlib)
 - 005-analog-section-time: Added Python 3.11 + zarr, numpy, scipy.signal.find_peaks
-- 005-analog-section-time: Added Python 3.11+ + numpy, scipy (find_peaks), zarr
-- 005-analog-section-time: Added Python 3.11 + numpy, scipy.signal.find_peaks, zarr
 
 
 <!-- MANUAL ADDITIONS START -->

@@ -24,6 +24,7 @@ from hdmea.features.frequency import FrequencyFeatureExtractor
 from hdmea.features.cell_type import CellTypeFeatureExtractor
 from hdmea.features.example import ExampleFeatureExtractor
 from hdmea.features.frif import FRIFExtractor
+from hdmea.features.sta import compute_sta, STAResult
 
 __all__ = [
     "FeatureRegistry",
@@ -37,5 +38,7 @@ __all__ = [
     "CellTypeFeatureExtractor",
     "ExampleFeatureExtractor",
     "FRIFExtractor",
+    "compute_sta",
+    "STAResult",
 ]
 

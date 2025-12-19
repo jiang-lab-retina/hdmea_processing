@@ -21,7 +21,12 @@ from hdmea.io.hdf5_store import (
     list_features,
     write_feature_to_unit,
 )
-from hdmea.io.section_time import add_section_time, add_section_time_analog
+from hdmea.io.section_time import (
+    add_section_time,
+    add_section_time_analog,
+    convert_frame_to_sample_index,
+    convert_sample_index_to_frame,
+)
 from hdmea.io.spike_sectioning import section_spike_times, SectionResult
 
 __all__ = [
@@ -42,5 +47,8 @@ __all__ = [
     "add_section_time_analog",
     "section_spike_times",
     "SectionResult",
+    # Frame/sample conversion
+    "convert_frame_to_sample_index",
+    "convert_sample_index_to_frame",
 ]
 

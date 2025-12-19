@@ -122,16 +122,77 @@ class TestLoadRecordingValidation:
             load_recording(output_dir=temp_dir)
     
     def test_validates_dataset_id_format(self, temp_dir):
-        """Test that invalid dataset_id format is rejected."""
+        """Test that invalid dataset_id format is rejected (path-unsafe chars)."""
         from hdmea.utils.exceptions import ConfigurationError
         
         with patch("hdmea.utils.validation.validate_path_exists") as mock_path:
             mock_path.side_effect = lambda p, ft: Path(p)
             
+            # Path-unsafe characters should be rejected
             with pytest.raises(ConfigurationError, match="Invalid dataset_id"):
                 load_recording(
                     cmtr_path="/fake/path.cmtr",
-                    dataset_id="invalid-format",
+                    dataset_id="invalid/format",  # Contains path separator
                     output_dir=temp_dir,
                 )
+    
+    def test_accepts_flexible_dataset_id_format(self, temp_dir):
+        """Test that flexible dataset_id formats are accepted."""
+        mock_units = {
+            "unit_000": {
+                "spike_times": np.array([1000], dtype=np.uint64),
+                "waveform": np.array([1.0], dtype=np.float32),
+                "row": 0,
+                "col": 0,
+                "global_id": 0,
+            }
+        }
+        
+        with patch("hdmea.io.cmtr.load_cmtr_data") as mock_cmtr, \
+             patch("hdmea.io.cmcr.load_cmcr_data") as mock_cmcr, \
+             patch("hdmea.utils.validation.validate_path_exists") as mock_path:
+            
+            mock_cmtr.return_value = {"units": mock_units, "metadata": {}}
+            mock_cmcr.return_value = {"light_reference": {}, "metadata": {}, "acquisition_rate": 20000}
+            mock_path.side_effect = lambda p, ft: Path(p)
+            
+            # Flexible format like timestamp-based filename should work
+            result = load_recording(
+                cmtr_path="/fake/path.cmtr",
+                dataset_id="2025.04.10-11.12.57-Rec",
+                output_dir=temp_dir,
+            )
+            
+            assert result.stage1_completed is True
+    
+    def test_strips_trailing_hyphens_from_dataset_id(self, temp_dir):
+        """Test that trailing hyphens are stripped from dataset_id."""
+        mock_units = {
+            "unit_000": {
+                "spike_times": np.array([1000], dtype=np.uint64),
+                "waveform": np.array([1.0], dtype=np.float32),
+                "row": 0,
+                "col": 0,
+                "global_id": 0,
+            }
+        }
+        
+        with patch("hdmea.io.cmtr.load_cmtr_data") as mock_cmtr, \
+             patch("hdmea.io.cmcr.load_cmcr_data") as mock_cmcr, \
+             patch("hdmea.utils.validation.validate_path_exists") as mock_path:
+            
+            mock_cmtr.return_value = {"units": mock_units, "metadata": {}}
+            mock_cmcr.return_value = {"light_reference": {}, "metadata": {}, "acquisition_rate": 20000}
+            mock_path.side_effect = lambda p, ft: Path(p)
+            
+            # Trailing hyphens should be stripped
+            result = load_recording(
+                cmtr_path="/fake/path.cmtr",
+                dataset_id="2025.04.10-11.12.57-Rec-",  # Has trailing hyphen
+                output_dir=temp_dir,
+            )
+            
+            assert result.stage1_completed is True
+            # The HDF5 file should not have trailing hyphen in name
+            assert result.hdf5_path.stem == "2025.04.10-11.12.57-Rec"
 
