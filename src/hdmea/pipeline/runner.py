@@ -660,13 +660,34 @@ def load_recording_with_eimage_sta(
     n_rows = sensor_stream.shape[1]
     n_cols = sensor_stream.shape[2]
     
-    # Get sampling rate from CMCR
+    # Get sampling rate and light reference from CMCR
     cmcr_result = load_cmcr_data(cmcr_path)
     sampling_rate = cmcr_result.get("acquisition_rate", 20000.0)
+    light_reference = cmcr_result.get("light_reference", {})
+    sys_meta = cmcr_result.get("metadata", {})
     
     total_samples = min(int(sampling_rate * duration_s), total_samples_available)
     logger.info(f"Sensor data: shape=({total_samples_available}, {n_rows}, {n_cols}), "
                f"processing {total_samples} samples ({total_samples/sampling_rate:.1f}s)")
+    
+    # Detect frame timestamps from light reference signal
+    frame_timestamps = None
+    if light_reference:
+        frame_channel_data = light_reference.get("raw_ch2")
+        if frame_channel_data is None:
+            frame_channel_data = light_reference.get("raw_ch1")
+        if frame_channel_data is not None and len(frame_channel_data) > 0:
+            try:
+                frame_timestamps = get_frame_timestamps(
+                    frame_channel_data,
+                    exclude_initial_frames=4,
+                    normalize_percentile=99.9,
+                    peak_height_threshold=0.1,
+                )
+                logger.info(f"Detected {len(frame_timestamps)} frame timestamps")
+            except Exception as e:
+                logger.warning(f"Failed to detect frame timestamps: {e}")
+                warnings_list.append(f"Frame timestamp detection failed: {e}")
     
     # =========================================================================
     # STEP 3: Derive dataset_id and create HDF5
@@ -702,13 +723,25 @@ def load_recording_with_eimage_sta(
     # Write units to HDF5
     write_units(root, units_data)
     
-    # Write metadata
+    # Build complete metadata
     metadata = {
         "dataset_id": dataset_id,
         "acquisition_rate": sampling_rate,
         "sample_interval": 1.0 / sampling_rate,
+        "sys_meta": sys_meta,
     }
+    if frame_timestamps is not None:
+        metadata["frame_timestamps"] = frame_timestamps
+        metadata["frame_time"] = (frame_timestamps / sampling_rate).astype(np.float64)
+    
     write_metadata(root, metadata)
+    
+    # Write stimulus data (light reference and frame times)
+    frame_times_dict = None
+    if frame_timestamps is not None:
+        frame_times_dict = {"default": frame_timestamps}
+    write_stimulus(root, light_reference, frame_times=frame_times_dict)
+    
     write_source_files(root, cmcr_path, cmtr_path)
     
     # Close root to use h5py directly

@@ -29,33 +29,33 @@ if __name__ == '__main__':
     #     force=True,  # Force regeneration to apply spike_times conversion
     # )
     
-    # Integrated loading + eimage_sta computation (loads CMTR and CMCR only once)
-    result = load_recording_with_eimage_sta(
-        cmcr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec.cmcr",
-        cmtr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec-.cmtr",
-        force=True,
-        # eimage_sta parameters
-        duration_s=120.0,
-        spike_limit=10000,
-        unit_ids= None, #["2", "7"],  # Match CMTR numbering (1-based)
-        window_range=(-10, 40),
-        skip_highpass=False,
-        chunk_duration_s=30.0,
-    )
+    # # Integrated loading + eimage_sta computation (loads CMTR and CMCR only once)
+    # result = load_recording_with_eimage_sta(
+    #     cmcr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec.cmcr",
+    #     cmtr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec-.cmtr",
+    #     force=True,
+    #     # eimage_sta parameters
+    #     duration_s=120.0,
+    #     spike_limit=10000,
+    #     unit_ids= None, #["2", "7"],  # Match CMTR numbering (1-based)
+    #     window_range=(-10, 40),
+    #     skip_highpass=False,
+    #     chunk_duration_s=30.0,
+    # )
     
-    print(f"\nResult: {result.num_units} units loaded, {result.units_with_sta} with STA")
-    print(f"Elapsed: {result.elapsed_seconds:.1f}s, Filter time: {result.filter_time_seconds:.1f}s")
+    # print(f"\nResult: {result.num_units} units loaded, {result.units_with_sta} with STA")
+    # print(f"Elapsed: {result.elapsed_seconds:.1f}s, Filter time: {result.filter_time_seconds:.1f}s")
 
 
-    # # # Extract FRIF features
-    # # print("\n" + "=" * 60)
-    # # print("Extracting FRIF features...")
-    # # print("=" * 60)
-    # # extract_result = extract_features(
-    # #     hdf5_path=result.hdf5_path,
-    # #     features=["frif"],
-    # #     force=True
-    # # )
+    # # # # Extract FRIF features
+    # # # print("\n" + "=" * 60)
+    # # # print("Extracting FRIF features...")
+    # # # print("=" * 60)
+    # # # extract_result = extract_features(
+    # # #     hdf5_path=result.hdf5_path,
+    # # #     features=["frif"],
+    # # #     force=True
+    # # # )
 
 
     add_section_time(
