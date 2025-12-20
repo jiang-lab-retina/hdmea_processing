@@ -25,6 +25,12 @@ from hdmea.features.cell_type import CellTypeFeatureExtractor
 from hdmea.features.example import ExampleFeatureExtractor
 from hdmea.features.frif import FRIFExtractor
 from hdmea.features.sta import compute_sta, STAResult
+from hdmea.features.eimage_sta import (
+    EImageSTAExtractor,
+    compute_eimage_sta,
+    EImageSTAConfig,
+    EImageSTAResult,
+)
 
 __all__ = [
     "FeatureRegistry",
@@ -40,5 +46,9 @@ __all__ = [
     "FRIFExtractor",
     "compute_sta",
     "STAResult",
+    "EImageSTAExtractor",
+    "compute_eimage_sta",
+    "EImageSTAConfig",
+    "EImageSTAResult",
 ]
 

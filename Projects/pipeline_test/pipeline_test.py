@@ -4,14 +4,15 @@ import numpy as np
 
 # Enable logging to see what's happening
 import logging
-logging.basicConfig(level=logging.INFO, format='%(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(name)s - %(levelname)s - %(message)s')
 
-from hdmea.pipeline import load_recording
+from hdmea.pipeline import load_recording, load_recording_with_eimage_sta
 from hdmea.pipeline import extract_features
 from hdmea.pipeline import add_section_time
 from hdmea.io.section_time import add_section_time_analog
 from hdmea.io import section_spike_times
 from hdmea.features import compute_sta
+from hdmea.features.eimage_sta import compute_eimage_sta
 
 
 # IMPORTANT: On Windows, multiprocessing requires the main code to be inside
@@ -21,23 +22,40 @@ if __name__ == '__main__':
     print("Running pipeline test...")
     print("=" * 60)
 
-    # # Provide external paths to raw files - MUST run to convert spike_times to sample indices
+    # # Original separate load_recording call (kept for reference)
     # result = load_recording(
     #     cmcr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec.cmcr",
     #     cmtr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec-.cmtr",
     #     force=True,  # Force regeneration to apply spike_times conversion
     # )
+    
+    # Integrated loading + eimage_sta computation (loads CMTR and CMCR only once)
+    result = load_recording_with_eimage_sta(
+        cmcr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec.cmcr",
+        cmtr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec-.cmtr",
+        force=True,
+        # eimage_sta parameters
+        duration_s=120.0,
+        spike_limit=10000,
+        unit_ids= None, #["2", "7"],  # Match CMTR numbering (1-based)
+        window_range=(-10, 40),
+        skip_highpass=False,
+        chunk_duration_s=30.0,
+    )
+    
+    print(f"\nResult: {result.num_units} units loaded, {result.units_with_sta} with STA")
+    print(f"Elapsed: {result.elapsed_seconds:.1f}s, Filter time: {result.filter_time_seconds:.1f}s")
 
 
-    # # Extract FRIF features
-    # print("\n" + "=" * 60)
-    # print("Extracting FRIF features...")
-    # print("=" * 60)
-    # extract_result = extract_features(
-    #     hdf5_path=result.hdf5_path,
-    #     features=["frif"],
-    #     force=True
-    # )
+    # # # Extract FRIF features
+    # # print("\n" + "=" * 60)
+    # # print("Extracting FRIF features...")
+    # # print("=" * 60)
+    # # extract_result = extract_features(
+    # #     hdf5_path=result.hdf5_path,
+    # #     features=["frif"],
+    # #     force=True
+    # # )
 
 
     add_section_time(
@@ -100,3 +118,61 @@ if __name__ == '__main__':
         force=True,
     )
 
+
+
+
+############
+
+    # result = compute_eimage_sta(
+    #     hdf5_path="artifacts/2025.04.10-11.12.57-Rec.h5",
+    #     cmcr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec.cmcr",
+    #     cutoff_hz=100.0,
+    #     use_cache=False,
+    #     force=True,
+    #     spike_limit=np.inf,
+    #     skip_highpass=True,
+    #     )
+
+# from hdmea.features.eimage_sta import compute_eimage_sta_chunked
+
+# result = compute_eimage_sta_chunked(
+#     hdf5_path="artifacts/2025.04.10-11.12.57-Rec.h5",
+#     cmcr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec.cmcr",
+#     chunk_duration_s=30.0,  # 60 second chunks (~20 GB each)
+#     skip_highpass=False,     # Mean-center instead of filter when skip_highpass is True
+#     force=True,
+#     duration_s=120.0,
+#     spike_limit=10000,
+#     unit_ids=["unit_001", "unit_002", "unit_003"],
+#     window_range=(-30, 120),
+# )
+
+# from hdmea.features.eimage_sta import compute_eimage_sta_legacy
+
+# result = compute_eimage_sta_legacy(
+#     hdf5_path="artifacts/2025.04.10-11.12.57-Rec.h5",
+#     cmcr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec.cmcr",
+#     cmtr_path = "O:\\20250410\\set6\\2025.04.10-11.12.57-Rec-.cmtr",
+#     duration_s=120.0,
+#     spike_limit=10000,
+#     unit_ids=[ "2", "7"],
+#     window_range=(-10, 40),
+#     skip_highpass=False,
+#     force=True,
+# )
+
+# Separate eimage_sta call (commented out - now integrated above)
+# from hdmea.features.eimage_sta import compute_eimage_sta_legacy_improved
+#
+# result = compute_eimage_sta_legacy_improved(
+#     hdf5_path="artifacts/2025.04.10-11.12.57-Rec.h5",
+#     cmcr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec.cmcr",
+#     cmtr_path="O:\\20250410\\set6\\2025.04.10-11.12.57-Rec-.cmtr",
+#     duration_s=120.0,
+#     spike_limit=10000,
+#     unit_ids=["2", "7"],  # Just the numbers
+#     window_range=(-10, 40),
+#     skip_highpass=False,
+#     chunk_duration_s=30.0,  # 30-second chunks for memory efficiency
+#     force=True,
+# )

@@ -518,6 +518,415 @@ def load_recording(
 
 
 # =============================================================================
+# Integrated Loading + eimage_sta Computation
+# =============================================================================
+
+@dataclass
+class LoadWithEImageSTAResult:
+    """Result of load_recording_with_eimage_sta."""
+    hdf5_path: Path
+    dataset_id: str
+    num_units: int
+    units_with_sta: int
+    stage1_completed: bool
+    elapsed_seconds: float
+    filter_time_seconds: float
+    warnings: List[str] = field(default_factory=list)
+
+
+def load_recording_with_eimage_sta(
+    cmcr_path: Union[str, Path],
+    cmtr_path: Union[str, Path],
+    dataset_id: Optional[str] = None,
+    *,
+    output_dir: Union[str, Path] = "artifacts",
+    force: bool = False,
+    # eimage_sta parameters
+    duration_s: float = 120.0,
+    spike_limit: int = 10000,
+    unit_ids: Optional[List[str]] = None,
+    window_range: Tuple[int, int] = (-10, 40),
+    cutoff_hz: float = 100.0,
+    filter_order: int = 2,
+    skip_highpass: bool = False,
+    chunk_duration_s: float = 30.0,
+) -> LoadWithEImageSTAResult:
+    """
+    Load recording and compute eimage_sta in a single pass.
+    
+    This integrated function:
+    1. Loads CMTR once (spike times)
+    2. Creates HDF5 with unit data
+    3. Loads CMCR sensor data in chunks
+    4. Computes eimage_sta for each unit using chunk-based processing
+    5. Saves everything at the end
+    
+    Memory efficient: Only one chunk of sensor data in memory at a time.
+    
+    Args:
+        cmcr_path: Path to .cmcr file (raw sensor data).
+        cmtr_path: Path to .cmtr file (spike-sorted data).
+        dataset_id: Unique identifier for the recording.
+        output_dir: Directory for HDF5 output. Default: "artifacts".
+        force: If True, overwrite existing HDF5. Default: False.
+        duration_s: Total duration to analyze in seconds (default 120s).
+        spike_limit: Maximum spikes to use per unit (default 10000).
+        unit_ids: List of unit IDs to process (default None = all units).
+            Format: ["1", "2", "7"] matching CMTR numbering.
+        window_range: Tuple (start, end) relative to spike in samples, e.g. (-10, 40).
+        cutoff_hz: High-pass filter cutoff frequency in Hz.
+        filter_order: Butterworth filter order.
+        skip_highpass: If True, skip high-pass filter and mean-center instead.
+        chunk_duration_s: Duration of each chunk in seconds (default 30s).
+    
+    Returns:
+        LoadWithEImageSTAResult with processing summary.
+    
+    Example:
+        >>> result = load_recording_with_eimage_sta(
+        ...     cmcr_path="O:/data/recording.cmcr",
+        ...     cmtr_path="O:/data/recording.cmtr",
+        ...     duration_s=120.0,
+        ...     spike_limit=10000,
+        ...     unit_ids=["1", "2", "7"],
+        ...     window_range=(-10, 40),
+        ...     chunk_duration_s=30.0,
+        ... )
+    """
+    import time
+    import h5py
+    from scipy.signal import butter, sosfiltfilt
+    from hdmea.features.eimage_sta.compute import (
+        EImageSTAConfig,
+        write_eimage_sta_to_hdf5,
+    )
+    
+    start_time = time.time()
+    warnings_list: List[str] = []
+    
+    cmcr_path = Path(cmcr_path)
+    cmtr_path = Path(cmtr_path)
+    
+    # Validate inputs
+    if not cmcr_path.exists():
+        raise FileNotFoundError(f"CMCR file not found: {cmcr_path}")
+    if not cmtr_path.exists():
+        raise FileNotFoundError(f"CMTR file not found: {cmtr_path}")
+    
+    # Parse window_range
+    pre_samples = -window_range[0]
+    post_samples = window_range[1]
+    window_length = pre_samples + post_samples
+    
+    if pre_samples < 0 or post_samples < 0:
+        raise ValueError(
+            f"Invalid window_range {window_range}: start must be <= 0 and end must be >= 0"
+        )
+    
+    logger.info(
+        f"Integrated load + eimage_sta: window_range={window_range}, "
+        f"duration_s={duration_s}, spike_limit={spike_limit}, chunk_duration_s={chunk_duration_s}"
+    )
+    
+    # =========================================================================
+    # STEP 1: Load CMTR data (spike times) - only once
+    # =========================================================================
+    logger.info("Step 1: Loading CMTR data...")
+    
+    try:
+        from McsPy import McsCMOSMEA
+        cmtr_data = McsCMOSMEA.McsData(str(cmtr_path))
+        spike_sorter = cmtr_data['Spike Sorter']
+        cmtr_unit_keys = [key for key in spike_sorter.keys() if key.startswith('Unit')]
+        logger.info(f"Found {len(cmtr_unit_keys)} units in CMTR: {cmtr_unit_keys[:5]}...")
+    except ImportError:
+        raise ImportError("McsPy library not available. Install with: pip install McsPyDataTools")
+    except KeyError as e:
+        raise ValueError(f"Failed to access Spike Sorter in CMTR: {e}")
+    
+    # Also load via standard API for HDF5 creation
+    cmtr_result = load_cmtr_data(cmtr_path)
+    units_data = cmtr_result["units"]
+    
+    # =========================================================================
+    # STEP 2: Load CMCR info and get sampling rate
+    # =========================================================================
+    logger.info("Step 2: Opening CMCR and getting sensor info...")
+    
+    cmcr_data_mcspy = McsCMOSMEA.McsData(str(cmcr_path))
+    sensor_stream = cmcr_data_mcspy['Acquisition']['Sensor Data']["SensorData 1 1"]
+    
+    total_samples_available = sensor_stream.shape[0]
+    n_rows = sensor_stream.shape[1]
+    n_cols = sensor_stream.shape[2]
+    
+    # Get sampling rate from CMCR
+    cmcr_result = load_cmcr_data(cmcr_path)
+    sampling_rate = cmcr_result.get("acquisition_rate", 20000.0)
+    
+    total_samples = min(int(sampling_rate * duration_s), total_samples_available)
+    logger.info(f"Sensor data: shape=({total_samples_available}, {n_rows}, {n_cols}), "
+               f"processing {total_samples} samples ({total_samples/sampling_rate:.1f}s)")
+    
+    # =========================================================================
+    # STEP 3: Derive dataset_id and create HDF5
+    # =========================================================================
+    if dataset_id is None:
+        dataset_id = derive_dataset_id(cmcr_path, cmtr_path)
+        logger.info(f"Derived dataset_id: {dataset_id}")
+    
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    hdf5_path = output_dir / f"{dataset_id}.h5"
+    
+    logger.info(f"Step 3: Creating HDF5 file: {hdf5_path}")
+    
+    # Create HDF5 file
+    root = create_recording_hdf5(
+        hdf5_path,
+        dataset_id=dataset_id,
+        config={},
+        overwrite=force,
+    )
+    
+    # Process units: compute firing rates and convert spike_times
+    recording_duration_us = cmtr_result.get("metadata", {}).get("recording_duration_s", 0) * 1e6
+    
+    for unit_id, unit_info in units_data.items():
+        spike_times = unit_info.get("spike_times")
+        if spike_times is not None and len(spike_times) > 0:
+            duration_us = recording_duration_us if recording_duration_us > 0 else spike_times[-1] + 1e6
+            unit_info["firing_rate_10hz"] = compute_firing_rate(spike_times, duration_us, bin_rate_hz=10)
+            unit_info["spike_times"] = _convert_spike_times_to_samples(spike_times, sampling_rate)
+    
+    # Write units to HDF5
+    write_units(root, units_data)
+    
+    # Write metadata
+    metadata = {
+        "dataset_id": dataset_id,
+        "acquisition_rate": sampling_rate,
+        "sample_interval": 1.0 / sampling_rate,
+    }
+    write_metadata(root, metadata)
+    write_source_files(root, cmcr_path, cmtr_path)
+    
+    # Close root to use h5py directly
+    root.close()
+    
+    # =========================================================================
+    # STEP 4: Prepare spike samples for STA computation
+    # =========================================================================
+    logger.info("Step 4: Preparing spike samples for STA...")
+    
+    # Determine which units to process
+    if unit_ids is not None:
+        units_to_process = unit_ids
+        logger.info(f"Processing {len(units_to_process)} specified units")
+    else:
+        units_to_process = []
+        for key in cmtr_unit_keys:
+            parts = key.split()
+            if len(parts) >= 2:
+                units_to_process.append(parts[1])
+        logger.info(f"Processing all {len(units_to_process)} units from CMTR")
+    
+    # Load spike samples for each unit from CMTR (already in memory)
+    unit_spike_samples: Dict[str, np.ndarray] = {}
+    total_spikes_for_division: Dict[str, int] = {}
+    
+    for unit_num in units_to_process:
+        cmtr_unit_key = f"Unit {unit_num}"
+        if cmtr_unit_key not in spike_sorter:
+            warnings_list.append(f"Unit {unit_num} not found in CMTR")
+            continue
+        
+        unit_data = spike_sorter[cmtr_unit_key]
+        if "Peaks" not in unit_data:
+            warnings_list.append(f"No Peaks data for Unit {unit_num}")
+            continue
+        
+        # Apply spike_limit BEFORE conversion
+        if spike_limit > 0:
+            spike_data = unit_data["Peaks"][:spike_limit]
+        else:
+            spike_data = unit_data["Peaks"][:]
+        
+        # Convert to sample indices
+        spike_time_stamp = [spike[0] / 1_000_000 * sampling_rate for spike in spike_data]
+        spike_samples_arr = np.int64(spike_time_stamp)
+        
+        # Filter to spikes within duration
+        valid_mask = spike_samples_arr < total_samples
+        spike_samples_arr = spike_samples_arr[valid_mask]
+        
+        unit_spike_samples[unit_num] = spike_samples_arr
+        total_spikes_for_division[unit_num] = len(spike_samples_arr)
+        
+        logger.debug(f"Unit {unit_num}: {len(spike_samples_arr)} spikes within duration")
+    
+    # =========================================================================
+    # STEP 5: Chunk-based STA computation
+    # =========================================================================
+    logger.info("Step 5: Computing eimage_sta using chunk-based processing...")
+    
+    # Design filter once
+    if not skip_highpass:
+        nyquist = 0.5 * sampling_rate
+        if cutoff_hz >= nyquist:
+            raise ValueError(f"cutoff_hz ({cutoff_hz}) must be less than Nyquist ({nyquist})")
+        normalized_cutoff = cutoff_hz / nyquist
+        sos = butter(filter_order, normalized_cutoff, btype='high', analog=False, output='sos')
+    
+    # Initialize accumulators
+    sta_accumulators: Dict[str, np.ndarray] = {}
+    spike_counts: Dict[str, int] = {}
+    
+    for unit_num in unit_spike_samples.keys():
+        sta_accumulators[unit_num] = np.zeros((window_length, n_rows, n_cols), dtype=np.float64)
+        spike_counts[unit_num] = 0
+    
+    # Process chunks
+    chunk_samples = int(sampling_rate * chunk_duration_s)
+    overlap_samples = window_length
+    n_chunks = (total_samples + chunk_samples - 1) // chunk_samples
+    filter_time_total = 0.0
+    
+    for chunk_idx in tqdm(range(n_chunks), desc="Processing chunks"):
+        chunk_start = chunk_idx * chunk_samples
+        chunk_end = min(chunk_start + chunk_samples, total_samples)
+        
+        # Load with overlap for filtering
+        load_start = max(0, chunk_start - overlap_samples)
+        load_end = min(chunk_end + overlap_samples, total_samples)
+        
+        valid_start_in_chunk = chunk_start - load_start
+        valid_end_in_chunk = valid_start_in_chunk + (chunk_end - chunk_start)
+        
+        # Load chunk
+        chunk_data = sensor_stream[load_start:load_end, :, :]
+        chunk_data = np.array(chunk_data).astype(np.int16)
+        
+        # Filter chunk
+        filter_start = time.time()
+        
+        if skip_highpass:
+            chunk_float = chunk_data.astype(np.float32)
+            chunk_mean = chunk_float.mean(axis=0, keepdims=True)
+            filtered_chunk = chunk_float - chunk_mean
+        else:
+            chunk_float = chunk_data.astype(np.float32)
+            original_shape = chunk_float.shape
+            reshaped = chunk_float.reshape(original_shape[0], -1)
+            filtered_reshaped = sosfiltfilt(sos, reshaped, axis=0).astype(np.float32)
+            filtered_chunk = filtered_reshaped.reshape(original_shape)
+            del reshaped, filtered_reshaped
+        
+        filter_time_total += time.time() - filter_start
+        
+        del chunk_data, chunk_float
+        
+        # Extract valid portion
+        filtered_valid = filtered_chunk[valid_start_in_chunk:valid_end_in_chunk, :, :]
+        del filtered_chunk
+        
+        # Accumulate STA
+        for unit_num, spike_samples_arr in unit_spike_samples.items():
+            min_spike = chunk_start + pre_samples
+            max_spike = chunk_end - post_samples
+            
+            chunk_spikes_mask = (spike_samples_arr >= min_spike) & (spike_samples_arr < max_spike)
+            chunk_spikes = spike_samples_arr[chunk_spikes_mask]
+            
+            if len(chunk_spikes) == 0:
+                continue
+            
+            local_spikes = chunk_spikes - chunk_start
+            
+            for local_spike in local_spikes:
+                window_start = local_spike - pre_samples
+                window_end = local_spike + post_samples
+                
+                if window_start >= 0 and window_end <= filtered_valid.shape[0]:
+                    sta_accumulators[unit_num] += filtered_valid[window_start:window_end, :, :]
+                    spike_counts[unit_num] += 1
+        
+        del filtered_valid
+    
+    # =========================================================================
+    # STEP 6: Finalize and write eimage_sta to HDF5
+    # =========================================================================
+    logger.info("Step 6: Finalizing STAs and writing to HDF5...")
+    
+    config = EImageSTAConfig(
+        cutoff_hz=cutoff_hz,
+        filter_order=filter_order,
+        pre_samples=pre_samples,
+        post_samples=post_samples,
+        spike_limit=spike_limit,
+        duration_s=duration_s,
+        skip_highpass=skip_highpass,
+        use_cache=False,
+        cache_path=None,
+        force=force,
+    )
+    
+    units_with_sta = 0
+    
+    with h5py.File(hdf5_path, "r+") as hdf5_file:
+        for unit_num in tqdm(unit_spike_samples.keys(), desc="Saving eimage_sta"):
+            total_for_div = total_spikes_for_division.get(unit_num, 0)
+            n_used = spike_counts.get(unit_num, 0)
+            n_excluded = total_for_div - n_used
+            
+            if total_for_div == 0:
+                sta = np.full_like(sta_accumulators[unit_num], np.nan)
+            else:
+                sta = sta_accumulators[unit_num] / total_for_div
+            
+            unit_id = f"unit_{int(unit_num):03d}"
+            
+            written = write_eimage_sta_to_hdf5(
+                hdf5_file,
+                unit_id,
+                sta,
+                n_used,
+                n_excluded,
+                config,
+                sampling_rate,
+                force=force,
+            )
+            
+            if written:
+                units_with_sta += 1
+    
+    # Mark stage 1 complete
+    with h5py.File(hdf5_path, "r+") as hdf5_file:
+        if "pipeline" not in hdf5_file:
+            hdf5_file.create_group("pipeline")
+        hdf5_file["pipeline"].attrs["stage1_completed"] = True
+        hdf5_file["pipeline"].attrs["stage1_timestamp"] = datetime.now(timezone.utc).isoformat()
+    
+    elapsed = time.time() - start_time
+    
+    logger.info(
+        f"Integrated load + eimage_sta complete: {len(units_data)} units loaded, "
+        f"{units_with_sta} units with STA, {elapsed:.1f}s total, filter_time={filter_time_total:.1f}s"
+    )
+    
+    return LoadWithEImageSTAResult(
+        hdf5_path=hdf5_path,
+        dataset_id=dataset_id,
+        num_units=len(units_data),
+        units_with_sta=units_with_sta,
+        stage1_completed=True,
+        elapsed_seconds=elapsed,
+        filter_time_seconds=filter_time_total,
+        warnings=warnings_list,
+    )
+
+
+# =============================================================================
 # Stage 2: Feature Extraction
 # =============================================================================
 

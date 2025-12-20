@@ -103,7 +103,7 @@ def create_plot(
     elif ndim == 2:
         # 2D array - heatmap
         data = sample_array(array)
-        fig = plot_2d(data, title)
+        fig = plot_2d(data, title, color_range=color_range)
         if sampled:
             _add_sampled_annotation(fig, np.prod(array.shape), data.size)
         return fig

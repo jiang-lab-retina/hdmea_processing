@@ -10,8 +10,10 @@ Provides:
 
 from hdmea.pipeline.runner import (
     load_recording,
+    load_recording_with_eimage_sta,
     extract_features,
     LoadResult,
+    LoadWithEImageSTAResult,
     ExtractionResult,
     FlowResult,
 )
@@ -26,8 +28,10 @@ from hdmea.io.section_time import add_section_time
 
 __all__ = [
     "load_recording",
+    "load_recording_with_eimage_sta",
     "extract_features",
     "LoadResult",
+    "LoadWithEImageSTAResult",
     "ExtractionResult",
     "FlowResult",
     "run_flow",

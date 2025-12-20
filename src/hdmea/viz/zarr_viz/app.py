@@ -924,6 +924,61 @@ def render_array_view(node: TreeNode) -> None:
         use_blur = False  # Default: no blur for non-3D arrays
         blur_sigma = 2.0
         color_range = None  # Default: auto color range
+        use_custom_color_range = False  # Flag for manual vmin/vmax
+        
+        # Determine if we need color range controls (2D or 3D arrays)
+        is_2d = node.shape and len(node.shape) == 2
+        is_3d = node.shape and len(node.shape) == 3
+        
+        if is_2d:
+            # Compute global min/max for 2D array
+            array_data = np.asarray(array)
+            global_min = float(np.nanmin(array_data))
+            global_max = float(np.nanmax(array_data))
+            data_range = global_max - global_min
+            
+            # Add margin to slider range for flexibility
+            slider_min = global_min - 0.1 * abs(data_range) if data_range != 0 else global_min - 1
+            slider_max = global_max + 0.1 * abs(data_range) if data_range != 0 else global_max + 1
+            
+            st.markdown("**Color Range (vmin/vmax)**")
+            
+            use_custom_color_range = st.checkbox(
+                "Custom color range",
+                value=st.session_state.slice_config.get(f"{node.path}_use_custom_range", False),
+                key=f"use_custom_range_{node.path}",
+            )
+            st.session_state.slice_config[f"{node.path}_use_custom_range"] = use_custom_color_range
+            
+            if use_custom_color_range:
+                col_vmin, col_vmax = st.columns(2)
+                with col_vmin:
+                    vmin = st.slider(
+                        "vmin",
+                        min_value=float(slider_min),
+                        max_value=float(slider_max),
+                        value=st.session_state.slice_config.get(f"{node.path}_vmin", global_min),
+                        step=(slider_max - slider_min) / 200,
+                        format="%.4g",
+                        key=f"vmin_{node.path}",
+                    )
+                    st.session_state.slice_config[f"{node.path}_vmin"] = vmin
+                with col_vmax:
+                    vmax = st.slider(
+                        "vmax",
+                        min_value=float(slider_min),
+                        max_value=float(slider_max),
+                        value=st.session_state.slice_config.get(f"{node.path}_vmax", global_max),
+                        step=(slider_max - slider_min) / 200,
+                        format="%.4g",
+                        key=f"vmax_{node.path}",
+                    )
+                    st.session_state.slice_config[f"{node.path}_vmax"] = vmax
+                
+                color_range = (vmin, vmax)
+                st.caption(f"Data range: [{global_min:.4g}, {global_max:.4g}]")
+            else:
+                color_range = (global_min, global_max)
         
         if node.shape and len(node.shape) == 3:
             # For 3D arrays: allow choosing which dimension to slide through
@@ -974,9 +1029,53 @@ def render_array_view(node: TreeNode) -> None:
             st.session_state.slice_config[f"{node.path}_blur_sigma"] = blur_sigma
             
             # Compute global min/max for consistent color scale across all slices
-            global_min = float(np.min(array))
-            global_max = float(np.max(array))
-            color_range = (global_min, global_max)
+            array_data = np.asarray(array)
+            global_min = float(np.nanmin(array_data))
+            global_max = float(np.nanmax(array_data))
+            data_range = global_max - global_min
+            
+            # Add margin to slider range for flexibility
+            slider_min = global_min - 0.1 * abs(data_range) if data_range != 0 else global_min - 1
+            slider_max = global_max + 0.1 * abs(data_range) if data_range != 0 else global_max + 1
+            
+            st.markdown("**Color Range (vmin/vmax)**")
+            
+            use_custom_color_range = st.checkbox(
+                "Custom color range",
+                value=st.session_state.slice_config.get(f"{node.path}_use_custom_range", False),
+                key=f"use_custom_range_{node.path}",
+            )
+            st.session_state.slice_config[f"{node.path}_use_custom_range"] = use_custom_color_range
+            
+            if use_custom_color_range:
+                col_vmin, col_vmax = st.columns(2)
+                with col_vmin:
+                    vmin = st.slider(
+                        "vmin",
+                        min_value=float(slider_min),
+                        max_value=float(slider_max),
+                        value=st.session_state.slice_config.get(f"{node.path}_vmin", global_min),
+                        step=(slider_max - slider_min) / 200,
+                        format="%.4g",
+                        key=f"vmin_{node.path}",
+                    )
+                    st.session_state.slice_config[f"{node.path}_vmin"] = vmin
+                with col_vmax:
+                    vmax = st.slider(
+                        "vmax",
+                        min_value=float(slider_min),
+                        max_value=float(slider_max),
+                        value=st.session_state.slice_config.get(f"{node.path}_vmax", global_max),
+                        step=(slider_max - slider_min) / 200,
+                        format="%.4g",
+                        key=f"vmax_{node.path}",
+                    )
+                    st.session_state.slice_config[f"{node.path}_vmax"] = vmax
+                
+                color_range = (vmin, vmax)
+                st.caption(f"Data range: [{global_min:.4g}, {global_max:.4g}]")
+            else:
+                color_range = (global_min, global_max)
             
         elif node.shape and len(node.shape) > 3:
             # For 4D+ arrays: keep original behavior with sliders for dims 2+

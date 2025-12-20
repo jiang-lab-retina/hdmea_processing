@@ -91,10 +91,19 @@ def load_cmtr_data(cmtr_path: Path) -> Dict[str, Any]:
             
             logger.info(f"Found {len(unit_attrs)} units in Spike_Sorter")
             
-            for unit_num, unit_attr in enumerate(sorted(unit_attrs)):
+            for unit_attr in sorted(unit_attrs):
                 try:
                     # Get unit object (can use getattr or get_unit method)
                     unit = getattr(spike_sorter, unit_attr)
+                    
+                    # Extract actual unit number from attribute name (e.g., "Unit_1" -> 1)
+                    # This preserves the CMTR unit numbering
+                    try:
+                        unit_num = int(unit_attr.split("_")[-1])
+                    except ValueError:
+                        logger.warning(f"Could not parse unit number from {unit_attr}, skipping")
+                        continue
+                    
                     unit_id = f"unit_{unit_num:03d}"
                     
                     # Get spike timestamps using get_peaks_timestamps()
