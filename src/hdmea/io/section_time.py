@@ -9,7 +9,10 @@ import itertools
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from hdmea.pipeline.session import PipelineSession
 
 import h5py
 import numpy as np
@@ -291,8 +294,8 @@ def _get_movie_start_end_frame(
 # =============================================================================
 
 def add_section_time(
-    hdf5_path: Union[str, Path],
-    playlist_name: str,
+    hdf5_path: Optional[Union[str, Path]] = None,
+    playlist_name: Optional[str] = None,
     *,
     playlist_file_path: Optional[Union[str, Path]] = None,
     movie_length_file_path: Optional[Union[str, Path]] = None,
@@ -301,7 +304,8 @@ def add_section_time(
     pre_margin_frame_num: int = PRE_MARGIN_FRAME_NUM,
     post_margin_frame_num: int = POST_MARGIN_FRAME_NUM,
     force: bool = False,
-) -> bool:
+    session: Optional["PipelineSession"] = None,
+) -> Union[bool, "PipelineSession"]:
     """
     Add section time metadata to an HDF5 recording from playlist CSV.
     
@@ -310,12 +314,16 @@ def add_section_time(
     under stimulus/section_time/{movie_name}. Also extracts and averages
     light templates for each section.
     
+    Supports deferred saving via the optional `session` parameter.
+    When session is provided, section times are stored in session.stimulus
+    instead of HDF5.
+    
     Note: Output is in acquisition sample indices (unified with analog
     section time) for consistent downstream processing. To convert to time:
     ``time_seconds = sample_index / acquisition_rate``
     
     Args:
-        hdf5_path: Path to HDF5 file
+        hdf5_path: Path to HDF5 file. Required if session=None.
         playlist_name: Name of playlist in playlist.csv
         playlist_file_path: Path to playlist CSV (uses default if None)
         movie_length_file_path: Path to movie_length CSV (uses default if None)
@@ -324,9 +332,11 @@ def add_section_time(
         pre_margin_frame_num: Display frames before movie start to include
         post_margin_frame_num: Display frames after movie end to include
         force: If True, overwrite existing section_time data
+        session: Optional PipelineSession for deferred saving.
     
     Returns:
-        True if section times were successfully added, False otherwise
+        True/False if session is None (immediate save mode).
+        PipelineSession if session is provided (deferred save mode).
     
     Raises:
         FileExistsError: If section_time data already exists and force=False
@@ -336,7 +346,7 @@ def add_section_time(
         - Each row: [start_sample, end_sample] in acquisition sample indices
         - Converted from display frames via: sample = frame_timestamps[frame]
     
-    Example:
+    Example (immediate save):
         >>> from hdmea.io.section_time import add_section_time
         >>> success = add_section_time(
         ...     hdf5_path="artifacts/REC_2023-12-07.h5",
@@ -345,9 +355,16 @@ def add_section_time(
         ... )
         >>> if success:
         ...     print("Section times added!")
-    """
-    hdf5_path = Path(hdf5_path)
     
+    Example (deferred save):
+        >>> session = load_recording(..., session=session)
+        >>> session = add_section_time(
+        ...     playlist_name="set6a",
+        ...     repeats=2,
+        ...     session=session,
+        ... )
+        >>> session.save()
+    """
     # Use default paths if not provided
     if playlist_file_path is None:
         playlist_file_path = DEFAULT_PLAYLIST_PATH
@@ -358,22 +375,136 @@ def add_section_time(
     if repeats <= 0:
         repeats = 1
     
+    # Validate playlist_name
+    if not playlist_name:
+        logger.error("playlist_name is required")
+        if session is not None:
+            session.warnings.append("playlist_name is required")
+            return session
+        return False
+    
     # Load configuration files
     playlist = _load_playlist_csv(playlist_file_path)
     if playlist is None:
         logger.error("Failed to load playlist configuration")
+        if session is not None:
+            session.warnings.append("Failed to load playlist configuration")
+            return session
         return False
     
     movies_length = _load_movie_length_csv(movie_length_file_path)
     if movies_length is None:
         logger.error("Failed to load movie length configuration")
+        if session is not None:
+            session.warnings.append("Failed to load movie length configuration")
+            return session
         return False
     
     # Check playlist name exists
     if playlist_name not in playlist.index:
         available = list(playlist.index)
         logger.error(f"Playlist '{playlist_name}' not found. Available: {available}")
+        if session is not None:
+            session.warnings.append(f"Playlist '{playlist_name}' not found. Available: {available}")
+            return session
         return False
+    
+    # =========================================================================
+    # Session-based vs HDF5-based mode
+    # =========================================================================
+    if session is not None:
+        # Deferred save mode: read from session
+        # Accept either load_recording or load_recording_with_eimage_sta
+        has_loaded_data = (
+            "load_recording" in session.completed_steps or
+            "load_recording_with_eimage_sta" in session.completed_steps
+        )
+        if not has_loaded_data:
+            logger.error("Session does not contain loaded recording data")
+            session.warnings.append("Session does not contain loaded recording data. Run load_recording first.")
+            return session
+        
+        # Check for existing section_time
+        if "section_time" in session.stimulus and not force:
+            logger.warning("section_time already exists in session. Use force=True to overwrite.")
+            session.mark_step_complete("add_section_time")
+            return session
+        
+        # Get frame_timestamps from session
+        frame_timestamps = None
+        if "frame_times" in session.stimulus and "frame_timestamps" in session.stimulus["frame_times"]:
+            frame_timestamps = np.array(session.stimulus["frame_times"]["frame_timestamps"])
+        elif "frame_timestamps" in session.metadata:
+            frame_timestamps = np.array(session.metadata["frame_timestamps"])
+        
+        if frame_timestamps is None or len(frame_timestamps) == 0:
+            logger.error("No frame_timestamps found in session")
+            session.warnings.append("No frame_timestamps found in session")
+            return session
+        
+        # Get light reference for template extraction
+        light_reference_raw = None
+        if "light_reference" in session.stimulus:
+            lr = session.stimulus["light_reference"]
+            if "raw_ch1" in lr:
+                light_reference_raw = np.array(lr["raw_ch1"])
+        
+        logger.info(f"Computing section times (deferred) for playlist '{playlist_name}' with {repeats} repeat(s)")
+        
+        movie_list, movie_start_end_frame, movie_light_template = _get_movie_start_end_frame(
+            playlist_name=playlist_name,
+            repeats=repeats,
+            all_playlists=playlist,
+            movies_length=movies_length,
+            frame_timestamps=frame_timestamps,
+            light_reference_raw=light_reference_raw,
+            pad_frame=pad_frame,
+            pre_margin_frame_num=pre_margin_frame_num,
+            post_margin_frame_num=post_margin_frame_num,
+        )
+        
+        if not movie_start_end_frame:
+            logger.warning("No section times computed - no valid movies found")
+            session.warnings.append("No section times computed - no valid movies found")
+            return session
+        
+        # Prepare section_time data and store in session
+        section_time_auto: Dict[str, np.ndarray] = {}
+        template_auto: Dict[str, np.ndarray] = {}
+        
+        for movie_name in movie_start_end_frame:
+            frame_pairs = np.array(movie_start_end_frame[movie_name], dtype=np.int64)
+            sample_pairs = np.zeros_like(frame_pairs)
+            for i, (start_frame, end_frame) in enumerate(frame_pairs):
+                start_frame = np.clip(start_frame, 0, len(frame_timestamps) - 1)
+                end_frame = np.clip(end_frame, 0, len(frame_timestamps) - 1)
+                sample_pairs[i, 0] = frame_timestamps[start_frame]
+                sample_pairs[i, 1] = frame_timestamps[end_frame]
+            section_time_auto[movie_name] = sample_pairs
+            
+            if movie_name in movie_light_template and movie_light_template[movie_name]:
+                templates = movie_light_template[movie_name]
+                template_list = list(itertools.zip_longest(*templates, fillvalue=np.nan))
+                template_auto[movie_name] = np.nanmean(template_list, axis=1).astype(np.float32)
+        
+        # Store in session
+        session.stimulus["section_time"] = section_time_auto
+        session.stimulus["light_template"] = template_auto
+        session.metadata["section_time_playlist"] = playlist_name
+        session.metadata["section_time_repeats"] = repeats
+        
+        session.mark_step_complete("add_section_time")
+        logger.info(f"Section times added (deferred) for {len(section_time_auto)} movies")
+        return session
+    
+    # =========================================================================
+    # Immediate save mode: write to HDF5
+    # =========================================================================
+    if hdf5_path is None:
+        logger.error("hdf5_path is required when session is not provided")
+        return False
+    
+    hdf5_path = Path(hdf5_path)
     
     # Open HDF5
     try:

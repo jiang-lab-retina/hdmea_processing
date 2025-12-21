@@ -47,15 +47,15 @@ if __name__ == '__main__':
     # print(f"Elapsed: {result.elapsed_seconds:.1f}s, Filter time: {result.filter_time_seconds:.1f}s")
 
 
-    # Extract FRIF features
-    print("\n" + "=" * 60)
-    print("Extracting FRIF features...")
-    print("=" * 60)
-    extract_result = extract_features(
-        hdf5_path=result.hdf5_path,
-        features=["frif"],
-        force=True
-    )
+    # # # # Extract FRIF features
+    # # # print("\n" + "=" * 60)
+    # # # print("Extracting FRIF features...")
+    # # # print("=" * 60)
+    # # # extract_result = extract_features(
+    # # #     hdf5_path=result.hdf5_path,
+    # # #     features=["frif"],
+    # # #     force=True
+    # # # )
 
 
     add_section_time(

@@ -41,7 +41,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 import json
-from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypedDict, Union
+
+if TYPE_CHECKING:
+    from hdmea.pipeline.session import PipelineSession
 
 import h5py
 import numpy as np
@@ -453,14 +456,15 @@ def _write_sectioned_spikes(
 # =============================================================================
 
 def section_spike_times(
-    hdf5_path: Union[str, Path],
+    hdf5_path: Optional[Union[str, Path]] = None,
     *,
     movie_names: Optional[List[str]] = None,
     trial_repeats: int = 3,
-    pad_margin: Tuple[float, float] = (2.0, 0.0),
+    pad_margin: Tuple[float, float] = (0.0, 0.0),
     force: bool = False,
     config_dir: Optional[Union[str, Path]] = None,
-) -> SectionResult:
+    session: Optional["PipelineSession"] = None,
+) -> Union[SectionResult, "PipelineSession"]:
     """
     Section spike times by stimulation periods using JSON configuration files.
     
@@ -473,8 +477,12 @@ def section_spike_times(
     where each movie has a corresponding {movie_name}.json file containing
     section_kwargs with start_frame, trial_length_frame, and repeat values.
     
+    Supports deferred saving via the optional `session` parameter.
+    When session is provided, sectioned spikes are stored in session.units
+    instead of HDF5.
+    
     Args:
-        hdf5_path: Path to HDF5 file containing recording data.
+        hdf5_path: Path to HDF5 file containing recording data. Required if session=None.
             Must have `units/{unit_id}/spike_times` arrays (in sample units)
             and `stimulus/section_time/{movie_name}` trial boundaries.
         movie_names: Optional list of movies to process. If None, processes
@@ -487,9 +495,11 @@ def section_spike_times(
             raise FileExistsError if any unit already has sectioned data.
         config_dir: Path to directory containing stimulus JSON config files.
             Defaults to 'config/stimuli/' relative to project root.
+        session: Optional PipelineSession for deferred saving.
     
     Returns:
-        SectionResult with success, units_processed, movies_processed, etc.
+        SectionResult if session is None (immediate save mode).
+        PipelineSession if session is provided (deferred save mode).
     
     Raises:
         FileNotFoundError: If hdf5_path does not exist.
@@ -497,16 +507,24 @@ def section_spike_times(
         ValueError: If any movie lacks corresponding JSON config file.
         ValueError: If JSON config has invalid or missing section_kwargs.
     
-    Example:
+    Example (immediate save):
         >>> result = section_spike_times(
         ...     hdf5_path="artifacts/JIANG009_2025-04-10.h5",
         ...     pad_margin=(2.0, 0.0),
         ... )
         >>> print(f"Processed {result.units_processed} units")
+    
+    Example (deferred save):
+        >>> session = load_recording(..., session=session)
+        >>> session = add_section_time(..., session=session)
+        >>> session = section_spike_times(
+        ...     pad_margin=(2.0, 0.0),
+        ...     session=session,
+        ... )
+        >>> session.save()
     """
     import warnings as warnings_module
     
-    hdf5_path = Path(hdf5_path)
     warning_messages: List[str] = []
     
     # Resolve config directory
@@ -525,6 +543,135 @@ def section_spike_times(
             DeprecationWarning,
             stacklevel=2,
         )
+    
+    # =========================================================================
+    # Session-based mode: read from session, write to session
+    # =========================================================================
+    if session is not None:
+        if "add_section_time" not in session.completed_steps:
+            logger.error("Session does not contain section_time data")
+            session.warnings.append("Session does not contain section_time data. Run add_section_time first.")
+            return session
+        
+        # Get acquisition_rate from session metadata
+        acquisition_rate = session.metadata.get("acquisition_rate", 20000.0)
+        
+        # Convert pad_margin to samples
+        pre_samples = int(pad_margin[0] * acquisition_rate)
+        post_samples = int(pad_margin[1] * acquisition_rate)
+        
+        logger.info(f"Sectioning spike times (deferred) with pad_margin={pad_margin}")
+        
+        # Get frame_timestamps
+        frame_timestamps = None
+        if "frame_times" in session.stimulus and "frame_timestamps" in session.stimulus["frame_times"]:
+            frame_timestamps = np.array(session.stimulus["frame_times"]["frame_timestamps"])
+        elif "frame_timestamps" in session.metadata:
+            frame_timestamps = np.array(session.metadata["frame_timestamps"])
+        
+        if frame_timestamps is None:
+            logger.error("No frame_timestamps found in session")
+            session.warnings.append("No frame_timestamps found in session")
+            return session
+        
+        # Get section_time from session
+        if "section_time" not in session.stimulus:
+            session.warnings.append("No section_time data found in session")
+            session.mark_step_complete("section_spike_times")
+            return session
+        
+        section_time_data = session.stimulus["section_time"]
+        
+        # Determine movies to process
+        available_movies = list(section_time_data.keys())
+        if movie_names is None:
+            movies_to_process = available_movies
+        else:
+            movies_to_process = [m for m in movie_names if m in available_movies]
+        
+        if not movies_to_process:
+            session.warnings.append("No movies to process")
+            session.mark_step_complete("section_spike_times")
+            return session
+        
+        logger.info(f"Processing movies (deferred): {movies_to_process}")
+        
+        # Validate all JSON configs upfront
+        try:
+            stimuli_configs = _validate_all_configs(movies_to_process, resolved_config_dir)
+        except ValueError as e:
+            session.warnings.append(f"Stimulus config validation failed: {e}")
+            return session
+        
+        # Pre-compute trial boundaries for each movie
+        trial_boundaries_cache: Dict[str, List[Tuple[int, int]]] = {}
+        for movie_name in movies_to_process:
+            section_time = section_time_data[movie_name]
+            if len(section_time) == 0:
+                continue
+            
+            section_frame_start = int(convert_sample_index_to_frame(
+                np.array([section_time[0, 0]]), frame_timestamps
+            )[0])
+            
+            boundaries = _calculate_trial_boundaries(
+                section_kwargs=stimuli_configs[movie_name],
+                section_frame_start=section_frame_start,
+                frame_timestamps=frame_timestamps,
+            )
+            trial_boundaries_cache[movie_name] = boundaries
+        
+        # Process each unit
+        units_processed = 0
+        movies_actually_processed: set = set()
+        
+        for unit_id in tqdm(session.units.keys(), desc="Sectioning (deferred)", leave=False):
+            unit_data = session.units[unit_id]
+            
+            if "spike_times" not in unit_data:
+                warning_messages.append(f"Unit {unit_id} has no spike_times")
+                continue
+            
+            spike_times = np.array(unit_data["spike_times"])
+            
+            # Initialize spike_times_sectioned if not present
+            if "spike_times_sectioned" not in unit_data:
+                unit_data["spike_times_sectioned"] = {}
+            
+            for movie_name in movies_to_process:
+                if movie_name not in trial_boundaries_cache:
+                    continue
+                
+                trial_boundaries = trial_boundaries_cache[movie_name]
+                
+                full_spike_times, trials_spike_times = _section_unit_spikes(
+                    spike_times=spike_times,
+                    trial_boundaries=trial_boundaries,
+                    pre_samples=pre_samples,
+                    post_samples=post_samples,
+                )
+                
+                # Store in session
+                unit_data["spike_times_sectioned"][movie_name] = {
+                    "full_spike_times": full_spike_times,
+                    "trials_spike_times": trials_spike_times,
+                }
+                movies_actually_processed.add(movie_name)
+            
+            units_processed += 1
+        
+        session.warnings.extend(warning_messages)
+        session.mark_step_complete("section_spike_times")
+        logger.info(f"Sectioning complete (deferred): {units_processed} units, {len(movies_actually_processed)} movies")
+        return session
+    
+    # =========================================================================
+    # Immediate save mode: read from HDF5, write to HDF5
+    # =========================================================================
+    if hdf5_path is None:
+        raise ValueError("hdf5_path is required when session is not provided")
+    
+    hdf5_path = Path(hdf5_path)
     
     # Validate path exists
     if not hdf5_path.exists():

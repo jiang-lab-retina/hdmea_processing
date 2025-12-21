@@ -13,6 +13,8 @@ Auto-generated from all feature plans. Last updated: 2025-12-15
 - HDF5 (.h5 files) - features stored in `units/{unit_id}/features/{movie_name}/sta` (009-sta-computation)
 - Python 3.11+ + numpy, h5py, tqdm, multiprocessing (stdlib) (009-sta-computation)
 - HDF5 (existing artifact format per constitution) (009-sta-computation)
+- Python 3.10+ (as per pyproject.toml) + h5py>=3.0.0, numpy>=1.24.0, pandas>=2.0.0 (001-deferred-hdf5-save)
+- HDF5 files (.h5) via h5py (001-deferred-hdf5-save)
 
 - Python 3.11+ + Streamlit (GUI framework), Plotly (interactive plots), zarr (data access) (002-zarr-viz-gui)
 
@@ -32,9 +34,9 @@ cd src; pytest; ruff check .
 Python 3.11+: Follow standard conventions
 
 ## Recent Changes
+- 001-deferred-hdf5-save: Added Python 3.10+ (as per pyproject.toml) + h5py>=3.0.0, numpy>=1.24.0, pandas>=2.0.0
 - 009-sta-computation: Added Python 3.11+ + numpy, h5py, tqdm, multiprocessing (stdlib)
 - 009-sta-computation: Added Python 3.11+ + h5py, numpy, tqdm, multiprocessing (stdlib)
-- 005-analog-section-time: Added Python 3.11 + zarr, numpy, scipy.signal.find_peaks
 
 
 <!-- MANUAL ADDITIONS START -->

@@ -1,13 +1,19 @@
 # HD-MEA Pipeline: Current Flow
 
-**Last Updated**: 2025-12-18  
-**Pipeline Version**: 0.1.0
+**Last Updated**: 2025-12-20  
+**Pipeline Version**: 0.2.0
 
 ## Overview
 
 The HD-MEA Data Analysis Pipeline processes high-density multi-electrode array (HD-MEA) recordings
-through a two-stage workflow: data loading and feature extraction. The pipeline produces self-describing
-Zarr archives that contain all information needed for downstream analysis.
+through a multi-stage workflow: data loading, section timing, spike sectioning, and feature extraction. 
+The pipeline produces self-describing HDF5 archives (`.h5`) that contain all information needed for 
+downstream analysis.
+
+**Key Features**:
+- **Immediate Save Mode** (default): Each pipeline function writes directly to HDF5
+- **Deferred Save Mode** (optional): Accumulate data in memory, save once at the end
+- **Checkpoint Support**: Save intermediate state and resume later
 
 **Key Insight**: The pipeline works with multiple time coordinate systems (acquisition samples at ~20 kHz, 
 display frames at ~45 Hz, and time in seconds). Understanding these coordinate systems and their conversions 
@@ -40,17 +46,17 @@ for details.
 │  │  • Detect frame timestamps             │ │                  │         │
 │  │  • Compute firing rates (10Hz)         │ │                  │         │
 │  │  • Convert spike_times to sample units │ │                  │         │
-│  │  • Write to Zarr archive               │ │                  │         │
+│  │  • Write to HDF5 OR session (deferred) │ │                  │         │
 │  └───────────────────┬────────────────────┘ │                  │         │
 │                      │                      │                  │         │
 └──────────────────────┼──────────────────────┼──────────────────┼─────────┘
                        │                      │                  │
                        ▼                      ▼                  ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         ZARR ARCHIVE                                     │
+│                         HDF5 ARCHIVE                                     │
 │                                                                          │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │  {dataset_id}.zarr                                               │    │
+│  │  {dataset_id}.h5                                                 │    │
 │  │                                                                  │    │
 │  │  ├── units/                    # Spike-sorted units              │    │
 │  │  │   ├── {unit_id}/                                              │    │
@@ -70,11 +76,14 @@ for details.
 │  │  │   ├── section_time/         # Movie section boundaries        │    │
 │  │  │   └── light_template/       # Averaged light templates        │    │
 │  │  │                                                               │    │
-│  │  └── metadata/                 # Recording metadata              │    │
-│  │      ├── acquisition_rate      # Sampling rate (Hz)              │    │
-│  │      ├── sample_interval       # Time per sample (s)             │    │
-│  │      ├── frame_timestamps      # Frame indices                   │    │
-│  │      └── sys_meta/             # Raw file metadata               │    │
+│  │  ├── metadata/                 # Recording metadata              │    │
+│  │  │   ├── acquisition_rate      # Sampling rate (Hz)              │    │
+│  │  │   ├── sample_interval       # Time per sample (s)             │    │
+│  │  │   ├── frame_timestamps      # Frame indices                   │    │
+│  │  │   └── sys_meta/             # Raw file metadata               │    │
+│  │  │                                                               │    │
+│  │  └── pipeline/                 # Pipeline tracking (deferred)    │    │
+│  │      └── session_info/         # Completed steps, warnings       │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -149,60 +158,133 @@ for details.
 
 | Function | Module | Purpose |
 |----------|--------|---------|
-| `load_recording()` | `hdmea.pipeline` | Stage 1: Load raw data into Zarr |
-| `extract_features()` | `hdmea.pipeline` | Stage 2: Extract features from Zarr |
+| `load_recording()` | `hdmea.pipeline` | Stage 1: Load raw data into HDF5 or session |
+| `extract_features()` | `hdmea.pipeline` | Stage 2: Extract features from HDF5 or session |
 | `add_section_time()` | `hdmea.io.section_time` | Add movie section timing (playlist-based) |
 | `add_section_time_analog()` | `hdmea.io.section_time` | Add movie section timing (peak detection) |
 | `section_spike_times()` | `hdmea.io.spike_sectioning` | Section spike times by trial boundaries |
 | `compute_sta()` | `hdmea.features.sta` | Compute Spike Triggered Average for noise stimulus |
 | `run_flow()` | `hdmea.pipeline` | Run a named flow (Stage 1 + Stage 2) |
+| `create_session()` | `hdmea.pipeline` | Create a PipelineSession for deferred saving |
+| `PipelineSession` | `hdmea.pipeline` | In-memory container for deferred save mode |
 
-### Example Usage
+### Example Usage: Immediate Save Mode (Default)
 
 ```python
 from hdmea.pipeline import load_recording, extract_features
-from hdmea.io.section_time import add_section_time, add_section_time_analog
+from hdmea.io.section_time import add_section_time
 
-# Stage 1: Load recording
+# Stage 1: Load recording (writes HDF5 immediately)
 result = load_recording(
     cmcr_path="path/to/recording.cmcr",
     cmtr_path="path/to/recording.cmtr",
     dataset_id="REC_2023-12-07",
 )
 
-# Optional: Add section time metadata (before or after feature extraction)
-# Method 1: Playlist-based (for predefined stimuli)
+# Add section time metadata
 add_section_time(
-    zarr_path=result.zarr_path,
+    hdf5_path=result.hdf5_path,
     playlist_name="set6a",
     repeats=2,
 )
 
-# Method 2: Analog peak detection (for post-hoc timing)
-# Note: Inspect np.diff(raw_ch1) to determine appropriate threshold
-add_section_time_analog(
-    zarr_path=result.zarr_path,
-    threshold_value=1e6,  # Determined from signal inspection
-    movie_name="iprgc_test",
-    plot_duration=120.0,  # 2 minute windows (in seconds)
-    repeat=2,  # Limit section_time to first 2 trials (light_template uses all)
-)
-# Output: section_time in acquisition sample indices, light_template averaged
-
 # Stage 2: Extract features
 extract_result = extract_features(
-    zarr_path=result.zarr_path,
+    hdf5_path=result.hdf5_path,
     features=["frif", "step_up", "chirp"],
 )
 ```
 
+### Example Usage: Deferred Save Mode (New)
+
+```python
+from hdmea.pipeline import create_session, load_recording, extract_features
+from hdmea.io.section_time import add_section_time
+from hdmea.io import section_spike_times
+from hdmea.features import compute_sta
+
+# Create a deferred session - all data stays in memory
+session = create_session(dataset_id="2025.04.10-11.12.57-Rec")
+
+# Stage 1: Load recording (accumulates in session, no HDF5 write)
+session = load_recording(
+    cmcr_path="O:/20250410/set6/2025.04.10-11.12.57-Rec.cmcr",
+    cmtr_path="O:/20250410/set6/2025.04.10-11.12.57-Rec-.cmtr",
+    session=session,
+)
+
+# Add section timing (still in memory)
+session = add_section_time(
+    playlist_name="play_optimization_set6_ipRGC_manual",
+    session=session,
+)
+
+# Section spike times (still in memory)
+session = section_spike_times(
+    pad_margin=(2.0, 0.0),
+    session=session,
+)
+
+# Extract features (still in memory)
+session = extract_features(
+    features=["frif"],
+    session=session,
+)
+
+# Compute STA (still in memory)
+session = compute_sta(
+    cover_range=(-60, 0),
+    session=session,
+)
+
+# Single write at the end - creates one HDF5 file
+hdf5_path = session.save()
+print(f"Saved to: {hdf5_path}")
+```
+
+### Checkpoint and Resume
+
+```python
+from hdmea.pipeline import create_session, load_recording, PipelineSession
+
+# Create session and run some steps
+session = create_session(dataset_id="long_recording")
+session = load_recording(..., session=session)
+
+# Save checkpoint (can resume later)
+session.checkpoint("artifacts/checkpoint_after_load.h5")
+
+# Continue processing...
+session = add_section_time(..., session=session)
+
+# Later: Resume from checkpoint
+session = PipelineSession.load("artifacts/checkpoint_after_load.h5")
+# Continue from where you left off
+```
+
 ## Data Flow Summary
 
+### Immediate Save Mode (Default)
 1. **Input**: Raw `.cmcr` (sensor data) and `.cmtr` (spike-sorted) files
-2. **Stage 1**: Load and convert to standardized Zarr format
-3. **Stage 2**: Extract features for each unit, write back to Zarr
-4. **Optional**: Add section timing metadata from playlist configuration
-5. **Output**: Self-contained Zarr archive with all data and features
+2. **Stage 1**: Load and convert to standardized HDF5 format
+3. **Optional**: Add section timing metadata from playlist configuration
+4. **Stage 2**: Extract features for each unit, write back to HDF5
+5. **Output**: Self-contained HDF5 archive (`.h5`) with all data and features
+
+### Deferred Save Mode (Optional)
+1. **Input**: Raw `.cmcr` (sensor data) and `.cmtr` (spike-sorted) files
+2. **Create Session**: `session = create_session(dataset_id="...")`
+3. **Stage 1**: Load recording → data accumulates in `session.units`
+4. **Optional**: Add section timing → data accumulates in `session.stimulus`
+5. **Stage 2**: Extract features → data accumulates in `session.units[*]["features"]`
+6. **Save**: `session.save()` → single HDF5 file created
+7. **Output**: Self-contained HDF5 archive (`.h5`) with all data and features
+
+**Benefits of Deferred Save Mode**:
+- Eliminates intermediate HDF5 writes for multi-step pipelines
+- Reduced disk I/O improves performance
+- Checkpoint support for long-running pipelines
+- Resume from checkpoint after interruption
 
 ## Configuration
 
@@ -237,7 +319,7 @@ Spike sectioning can use JSON config files from `config/stimuli/{movie_name}.jso
 
 | Path | Purpose |
 |------|---------|
-| `artifacts/` | Default output directory for Zarr archives |
+| `artifacts/` | Default output directory for HDF5 archives |
 | `config/flows/` | Flow configuration files |
 | `config/stimuli/` | Stimulus-specific JSON configuration files |
 | `//Jiangfs1/.../playlist.csv` | Default playlist configuration |
@@ -248,6 +330,51 @@ Spike sectioning can use JSON config files from `config/stimuli/{movie_name}.jso
 - Stage 1 results are cached by `params_hash` - rerunning with same parameters skips loading
 - Stage 2 features are cached per-unit - only extracts missing features
 - Use `force=True` to override caching and recompute
+
+## Deferred Save Mode Details
+
+### PipelineSession Structure
+
+The `PipelineSession` object mirrors the HDF5 structure in memory:
+
+| Session Attribute | HDF5 Equivalent | Contents |
+|-------------------|-----------------|----------|
+| `session.units` | `/units/` | Dict of unit data (spike_times, features, etc.) |
+| `session.stimulus` | `/stimulus/` | Light reference, frame times, section time |
+| `session.metadata` | `/metadata/` | Acquisition rate, timestamps, sys_meta |
+| `session.source_files` | `/source_files/` | Original CMCR/CMTR paths |
+| `session.completed_steps` | `/pipeline/session_info/` | Set of completed pipeline steps |
+| `session.warnings` | `/pipeline/session_info/` | List of warning messages |
+
+### Session Lifecycle
+
+```
+CREATE          ACCUMULATE                SAVE
+   │                 │                       │
+   ▼                 ▼                       ▼
+┌──────┐    ┌─────────────────┐      ┌───────────┐
+│create│───▶│load_recording() │      │session.   │
+│_sess │    │extract_features │──────▶│  save()  │──▶ HDF5
+│ion() │    │add_section_time │      │           │
+└──────┘    │section_spike_   │      └───────────┘
+            │  times()        │             │
+            │compute_sta()    │             ▼
+            └─────────────────┘      ┌───────────┐
+                     │               │ .h5 file  │
+                     │               └───────────┘
+                     ▼
+              ┌────────────┐
+              │session.    │──▶ Checkpoint HDF5
+              │checkpoint()│    (resumable)
+              └────────────┘
+```
+
+### Memory Considerations
+
+- Deferred mode keeps all data in memory until `save()`
+- For large recordings (>8 GB), a warning is logged
+- Use `session.memory_estimate_gb()` to check memory usage
+- Consider using immediate mode or checkpoints for very large recordings
 
 ## Time Units and Coordinate Systems
 

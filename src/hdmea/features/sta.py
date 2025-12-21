@@ -24,7 +24,10 @@ import multiprocessing
 from dataclasses import dataclass, field
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from hdmea.pipeline.session import PipelineSession
 
 import h5py
 import numpy as np
@@ -211,6 +214,30 @@ def _find_noise_movie(
     return noise_movies[0]
 
 
+def _find_noise_movie_from_session(
+    section_time_data: Dict[str, np.ndarray],
+) -> Optional[str]:
+    """
+    Find the noise movie name from session section_time data.
+    
+    Args:
+        section_time_data: Dictionary of movie_name -> section_time arrays.
+    
+    Returns:
+        Noise movie name, or None if not found.
+    """
+    movies = list(section_time_data.keys())
+    noise_movies = [m for m in movies if "noise" in m.lower()]
+    
+    if len(noise_movies) == 0:
+        return None
+    
+    if len(noise_movies) > 1:
+        logger.warning(f"Multiple noise movies found: {noise_movies}. Using first one.")
+    
+    return noise_movies[0]
+
+
 def _compute_sta_for_unit(
     spike_frames: np.ndarray,
     movie_array: np.ndarray,
@@ -340,20 +367,25 @@ def _compute_with_retry(
 
 
 def compute_sta(
-    hdf5_path: Union[str, Path],
+    hdf5_path: Optional[Union[str, Path]] = None,
     *,
     cover_range: Tuple[int, int] = (-60, 0),
     use_multiprocessing: bool = True,
     stimuli_dir: Optional[Path] = None,
     force: bool = False,
-) -> STAResult:
+    session: Optional["PipelineSession"] = None,
+) -> Union[STAResult, "PipelineSession"]:
     """
     Compute Spike Triggered Average for all units using noise movie stimulus.
     
     Uses frame_timestamps from HDF5 file for accurate spike-to-frame conversion.
     
+    Supports deferred saving via the optional `session` parameter.
+    When session is provided, STA results are stored in session.units
+    instead of HDF5.
+    
     Args:
-        hdf5_path: Path to HDF5 recording file.
+        hdf5_path: Path to HDF5 recording file. Required if session=None.
         cover_range: Frame window relative to spike (start, end). 
                      Negative values indicate frames before spike.
                      Default: (-60, 0) = 60 frames before spike.
@@ -362,9 +394,11 @@ def compute_sta(
         stimuli_dir: Directory containing stimulus .npy files.
                      Default: M:\\Python_Project\\Data_Processing_2025\\Design_Stimulation_Pattern\\Data\\Stimulations\\
         force: If True, overwrite existing STA results. Default: False.
+        session: Optional PipelineSession for deferred saving.
     
     Returns:
-        STAResult with summary statistics and list of processed units.
+        STAResult if session is None (immediate save mode).
+        PipelineSession if session is provided (deferred save mode).
     
     Raises:
         ValueError: If no noise movie found, or multiple noise movies found.
@@ -372,15 +406,21 @@ def compute_sta(
         FileNotFoundError: If stimulus .npy file not found.
         RuntimeError: If HDF5 file is not readable/writable.
     
-    Example:
+    Example (immediate save):
         >>> from hdmea.features import compute_sta
         >>> result = compute_sta("artifacts/recording.h5", cover_range=(-60, 0))
         >>> print(f"Processed {result.units_processed} units")
+    
+    Example (deferred save):
+        >>> session = load_recording(..., session=session)
+        >>> session = add_section_time(..., session=session)
+        >>> session = section_spike_times(..., session=session)
+        >>> session = compute_sta(cover_range=(-60, 0), session=session)
+        >>> session.save()
     """
     import time
     start_time = time.time()
     
-    hdf5_path = Path(hdf5_path)
     stimuli_dir = stimuli_dir or DEFAULT_STIMULI_DIR
     warnings_list: List[str] = []
     failed_units: List[str] = []
@@ -391,6 +431,123 @@ def compute_sta(
             f"Invalid cover_range: {cover_range}. "
             f"Start ({cover_range[0]}) must be less than end ({cover_range[1]})."
         )
+    
+    # =========================================================================
+    # Session-based mode: read from session, write to session
+    # =========================================================================
+    if session is not None:
+        if "section_spike_times" not in session.completed_steps:
+            logger.error("Session does not contain sectioned spike data")
+            session.warnings.append("Session does not contain sectioned spike data. Run section_spike_times first.")
+            return session
+        
+        unit_ids = list(session.units.keys())
+        if not unit_ids:
+            session.warnings.append("No units found in session")
+            session.mark_step_complete("compute_sta")
+            return session
+        
+        # Find noise movie from session section_time
+        section_time_data = session.stimulus.get("section_time", {})
+        movie_name = _find_noise_movie_from_session(section_time_data)
+        
+        if movie_name is None:
+            session.warnings.append("No noise movie found in session section_time")
+            return session
+        
+        logger.info(f"Found noise movie (deferred): {movie_name}")
+        
+        # Load stimulus movie
+        movie_array = _load_stimulus_movie(movie_name, stimuli_dir)
+        
+        # Get frame_timestamps
+        frame_timestamps = None
+        if "frame_times" in session.stimulus and "frame_timestamps" in session.stimulus["frame_times"]:
+            frame_timestamps = np.array(session.stimulus["frame_times"]["frame_timestamps"])
+        elif "frame_timestamps" in session.metadata:
+            frame_timestamps = np.array(session.metadata["frame_timestamps"])
+        
+        if frame_timestamps is None:
+            session.warnings.append("No frame_timestamps found in session")
+            return session
+        
+        # Get movie start frame
+        section_time = section_time_data.get(movie_name)
+        if section_time is None or len(section_time) == 0:
+            session.warnings.append(f"No section_time for movie '{movie_name}'")
+            return session
+        
+        movie_start_sample = section_time[0, 0]
+        movie_start_frame = int(convert_sample_index_to_frame(
+            np.array([movie_start_sample]), frame_timestamps
+        )[0]) + PRE_MARGIN_FRAME_NUM
+        
+        # Pre-load spike data from session
+        unit_spike_data: Dict[str, np.ndarray] = {}
+        for unit_id in unit_ids:
+            unit_data = session.units[unit_id]
+            
+            # Check for sectioned spikes
+            if "spike_times_sectioned" not in unit_data:
+                warnings_list.append(f"No spike_times_sectioned for {unit_id}")
+                continue
+            
+            if movie_name not in unit_data["spike_times_sectioned"]:
+                warnings_list.append(f"No sectioned data for {unit_id}/{movie_name}")
+                continue
+            
+            sectioned = unit_data["spike_times_sectioned"][movie_name]
+            if "trials_spike_times" not in sectioned or 0 not in sectioned["trials_spike_times"]:
+                warnings_list.append(f"No trials_spike_times for {unit_id}/{movie_name}")
+                continue
+            
+            spike_samples = np.array(sectioned["trials_spike_times"][0])
+            spike_frames_absolute = convert_sample_index_to_frame(spike_samples, frame_timestamps)
+            spike_frames = spike_frames_absolute - movie_start_frame
+            unit_spike_data[unit_id] = spike_frames
+        
+        # Compute STA (simplified sequential for session mode)
+        logger.info(f"Processing {len(unit_spike_data)} units (deferred) with cover_range={cover_range}")
+        
+        _init_worker(movie_array, cover_range)
+        
+        units_processed = 0
+        for unit_id, spikes in tqdm(unit_spike_data.items(), desc="Computing STA (deferred)"):
+            uid, sta, n_used, n_excluded, error = _compute_with_retry((unit_id, spikes))
+            
+            if error is not None:
+                logger.error(f"Failed to compute STA for {unit_id}: {error}")
+                failed_units.append(unit_id)
+                continue
+            
+            # Store in session
+            session.add_feature(
+                unit_id,
+                f"sta_{movie_name}",
+                sta,
+                {
+                    "n_spikes_used": n_used,
+                    "n_spikes_excluded": n_excluded,
+                    "cover_range": list(cover_range),
+                    "movie_name": movie_name,
+                },
+            )
+            units_processed += 1
+        
+        session.warnings.extend(warnings_list)
+        session.mark_step_complete("compute_sta")
+        
+        elapsed = time.time() - start_time
+        logger.info(f"STA computation complete (deferred): {units_processed} units, {elapsed:.1f}s")
+        return session
+    
+    # =========================================================================
+    # Immediate save mode: read from HDF5, write to HDF5
+    # =========================================================================
+    if hdf5_path is None:
+        raise ValueError("hdf5_path is required when session is not provided")
+    
+    hdf5_path = Path(hdf5_path)
     
     # Phase 1: Load all data (HDF5 is not multiprocess-safe for reading)
     with h5py.File(hdf5_path, "r") as hdf5_file:

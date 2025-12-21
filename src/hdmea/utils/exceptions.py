@@ -160,3 +160,44 @@ class MismatchError(HDMEAError):
         self.cmtr_path = cmtr_path
         self.reason = reason
 
+
+class SessionError(HDMEAError):
+    """
+    Error with PipelineSession operations.
+    
+    Raised when:
+    - Session is in invalid state for requested operation
+    - Session data is corrupted or incomplete
+    - Required data not found in session
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        session_id: Optional[str] = None,
+        operation: Optional[str] = None,
+    ):
+        super().__init__(message)
+        self.session_id = session_id
+        self.operation = operation
+
+
+class CheckpointError(HDMEAError):
+    """
+    Error with checkpoint operations.
+    
+    Raised when:
+    - Checkpoint file cannot be written
+    - Checkpoint file is corrupted or invalid
+    - Resume from checkpoint fails
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        checkpoint_path: Optional[str] = None,
+        original_error: Optional[Exception] = None,
+    ):
+        super().__init__(message)
+        self.checkpoint_path = checkpoint_path
+        self.original_error = original_error

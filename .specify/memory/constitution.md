@@ -1,22 +1,23 @@
 <!--
   Sync Impact Report
   ==================
-  Version change: 1.1.0 → 1.2.0
+  Version change: 1.2.0 → 1.3.0
   Modified principles:
-    - IV. "Single Zarr Artifact" → "Single HDF5 Artifact" (format change)
-    - V. Data Format Standards: Zarr → HDF5 for hierarchical data
-  Added sections: None
+    - IV. Added "Deferred Save Mode" - pipeline can accumulate data in memory
+    - IV. PipelineSession as in-memory container for deferred saving
+  Added sections:
+    - IV.B. Deferred Save Mode
   Removed sections: None
-  Rationale: HDF5 provides better cross-platform tooling compatibility (HDFView, MATLAB)
-             while maintaining the same logical data structure. Single-file format
-             simplifies file management compared to Zarr directories.
+  Rationale: Deferred saving eliminates intermediate HDF5 writes for multi-step
+             pipelines, improving performance and reducing disk I/O. The optional
+             session parameter maintains backwards compatibility with existing scripts.
   Templates requiring updates:
     - ✅ `.specify/templates/plan-template.md` - no changes needed
     - ✅ `.specify/templates/spec-template.md` - no changes needed
     - ✅ `.specify/templates/tasks-template.md` - no changes needed
   Follow-up TODOs:
-    - Update test fixtures to use .h5 instead of .zarr
-    - Update artifact storage docs to reference HDF5
+    - Update quickstart examples with deferred save patterns
+    - Add session-based workflow examples to notebooks
 -->
 
 # HD-MEA Data Analysis Pipeline Constitution
@@ -121,6 +122,42 @@ In the preprocessing stage:
 **Rationale**: A single, self-contained artifact per recording simplifies caching, sharing, and
 ensures preprocessing runs exactly once. HDF5 provides broad cross-platform compatibility
 (h5py, HDFView, MATLAB) and single-file storage for easier file management.
+
+#### IV.B. Deferred Save Mode (OPTIONAL)
+
+The pipeline SUPPORTS an optional **deferred save mode** via `PipelineSession`:
+
+- When a `session` parameter is provided to pipeline functions, data accumulates in memory
+  instead of writing immediately to HDF5.
+- The `PipelineSession` object serves as an in-memory container for all pipeline data.
+- A single HDF5 file is written only when `session.save()` is explicitly called.
+- Intermediate checkpoints can be saved via `session.checkpoint()` without ending the session.
+- Sessions can be resumed from checkpoint via `PipelineSession.load()`.
+
+**Deferred save mode is OPTIONAL**:
+
+- When `session=None` (default), pipeline functions write immediately to HDF5 (original behavior).
+- Existing scripts continue to work without modification.
+- Deferred mode is recommended for multi-step pipelines to reduce disk I/O.
+
+**Session lifecycle**:
+
+```python
+# Create session
+session = create_session(dataset_id="2025.04.10-Rec")
+
+# Accumulate data (no disk writes)
+session = load_recording(..., session=session)
+session = extract_features(..., session=session)
+session = add_section_time(..., session=session)
+
+# Single write at the end
+session.save()  # Creates one HDF5 file
+```
+
+**Rationale**: Multi-step pipelines previously created intermediate HDF5 files at each stage.
+Deferred saving eliminates these intermediate writes, improving performance for long pipelines
+while maintaining the single-artifact-per-recording principle.
 
 ---
 
@@ -611,4 +648,4 @@ When amending this constitution:
 
 ---
 
-**Version**: 1.2.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-17
+**Version**: 1.3.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-20

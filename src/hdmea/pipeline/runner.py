@@ -2,21 +2,26 @@
 Pipeline runner for HD-MEA data processing.
 
 Implements Stage 1 (Data Loading) and Stage 2 (Feature Extraction) with caching.
+Supports optional deferred HDF5 saving via PipelineSession.
 """
 
 import logging
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
 from tqdm import tqdm
 
 from hdmea.io.cmcr import load_cmcr_data
 from hdmea.io.cmtr import load_cmtr_data, validate_cmcr_cmtr_match
+
+if TYPE_CHECKING:
+    from hdmea.pipeline.session import PipelineSession
 from hdmea.io.hdf5_store import (
     create_recording_hdf5,
     open_recording_hdf5,
@@ -238,12 +243,17 @@ def load_recording(
     force: bool = False,
     allow_overwrite: bool = False,
     config: Optional[Dict[str, Any]] = None,
-) -> LoadResult:
+    session: Optional["PipelineSession"] = None,
+) -> Union[LoadResult, "PipelineSession"]:
     """
     Load recording from external .cmcr/.cmtr files to HDF5 artifact.
     
     This is Stage 1 of the pipeline. Produces exactly ONE HDF5 file
     per recording containing all data needed for feature extraction.
+    
+    Supports deferred HDF5 saving via the optional `session` parameter.
+    When session is provided, data accumulates in the session instead of
+    being written to HDF5 immediately.
     
     Timing Metadata:
         The function extracts timing parameters using a priority chain:
@@ -266,16 +276,19 @@ def load_recording(
         force: If True, overwrite existing HDF5. Default: False.
         allow_overwrite: If True, allow overwriting existing HDF5 even if params differ. Default: False.
         config: Optional configuration dictionary.
+        session: Optional PipelineSession for deferred saving. When provided,
+            data accumulates in the session and the session is returned.
     
     Returns:
-        LoadResult with hdf5_path, dataset_id, unit count, and warnings.
+        LoadResult if session is None (immediate save mode).
+        PipelineSession if session is provided (deferred save mode).
     
     Raises:
         ConfigurationError: If neither cmcr_path nor cmtr_path provided.
         FileNotFoundError: If specified file(s) do not exist.
         DataLoadError: If files cannot be read.
     
-    Example:
+    Example (immediate save - default):
         >>> result = load_recording(
         ...     cmcr_path="path/to/recording.cmcr",
         ...     cmtr_path="path/to/recording.cmtr",
@@ -285,6 +298,17 @@ def load_recording(
         >>> import h5py
         >>> with h5py.File(str(result.hdf5_path), mode="r") as f:
         ...     acquisition_rate = f["metadata/acquisition_rate"][0]  # Hz
+    
+    Example (deferred save):
+        >>> from hdmea.pipeline import create_session
+        >>> session = create_session(cmcr_path="path/to/recording.cmcr")
+        >>> session = load_recording(
+        ...     cmcr_path="path/to/recording.cmcr",
+        ...     cmtr_path="path/to/recording.cmtr",
+        ...     session=session,
+        ... )
+        >>> # Data is in memory, not saved yet
+        >>> session.save()  # Save when ready
     """
     warnings = []
     config = config or {}
@@ -308,43 +332,51 @@ def load_recording(
     # Validate CMCR/CMTR match if both provided
     validate_cmcr_cmtr_match(cmcr_path_obj, cmtr_path_obj)
     
-    # Prepare output path
+    # Prepare output path (only used for immediate save mode)
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    hdf5_path = output_dir / f"{dataset_id}.h5"
+    hdf5_path = None
+    root = None
     
-    # Check for existing HDF5 (caching)
-    if hdf5_path.exists() and not overwrite:
-        with open_recording_hdf5(hdf5_path, mode="r") as root:
-            status = get_stage1_status(root)
-            
-            if status["completed"]:
-                # Check if params match
-                if verify_hash(config, status["params_hash"]):
-                    logger.info(f"Cache hit: {hdf5_path} already exists with matching params")
-                    num_units = len(list_units(root))
-                    return LoadResult(
-                        hdf5_path=hdf5_path,
-                        dataset_id=dataset_id,
-                        num_units=num_units,
-                        stage1_completed=True,
-                        warnings=["Using cached HDF5 (skipped loading)"],
-                    )
-                else:
-                    logger.warning("HDF5 exists but params differ. Use force=True or allow_overwrite=True to overwrite.")
-                    raise FileExistsError(
-                        f"HDF5 already exists with different params: {hdf5_path}. "
-                        "Use force=True or allow_overwrite=True to overwrite."
-                    )
-    
-    # Create new HDF5
-    logger.info(f"Creating new HDF5: {hdf5_path}")
-    root = create_recording_hdf5(
-        hdf5_path,
-        dataset_id=dataset_id,
-        config=config,
-        overwrite=overwrite,
-    )
+    if session is None:
+        # Immediate save mode: need HDF5 file
+        output_dir.mkdir(parents=True, exist_ok=True)
+        hdf5_path = output_dir / f"{dataset_id}.h5"
+        
+        # Check for existing HDF5 (caching)
+        if hdf5_path.exists() and not overwrite:
+            with open_recording_hdf5(hdf5_path, mode="r") as root:
+                status = get_stage1_status(root)
+                
+                if status["completed"]:
+                    # Check if params match
+                    if verify_hash(config, status["params_hash"]):
+                        logger.info(f"Cache hit: {hdf5_path} already exists with matching params")
+                        num_units = len(list_units(root))
+                        return LoadResult(
+                            hdf5_path=hdf5_path,
+                            dataset_id=dataset_id,
+                            num_units=num_units,
+                            stage1_completed=True,
+                            warnings=["Using cached HDF5 (skipped loading)"],
+                        )
+                    else:
+                        logger.warning("HDF5 exists but params differ. Use force=True or allow_overwrite=True to overwrite.")
+                        raise FileExistsError(
+                            f"HDF5 already exists with different params: {hdf5_path}. "
+                            "Use force=True or allow_overwrite=True to overwrite."
+                        )
+        
+        # Create new HDF5
+        logger.info(f"Creating new HDF5: {hdf5_path}")
+        root = create_recording_hdf5(
+            hdf5_path,
+            dataset_id=dataset_id,
+            config=config,
+            overwrite=overwrite,
+        )
+    else:
+        # Deferred save mode: just log
+        logger.info(f"Loading recording in deferred mode (session: {session.dataset_id})")
     
     units_data = {}
     light_reference = {}
@@ -488,14 +520,46 @@ def load_recording(
                 unit_id, processed_info = future.result()
                 units_data[unit_id] = processed_info
     
-    # Write to Zarr
-    write_units(root, units_data)
-    
-    # Prepare frame_times for write_stimulus
+    # Prepare frame_times for stimulus
     frame_times_dict = None
     if frame_timestamps is not None:
         frame_times_dict = {"default": frame_timestamps}
     
+    # =========================================================================
+    # Session-based vs Immediate Save
+    # =========================================================================
+    if session is not None:
+        # Deferred save mode: accumulate data in session
+        session.add_units(units_data)
+        session.add_metadata(metadata)
+        
+        # Build stimulus data
+        stimulus_data = {}
+        if light_reference:
+            stimulus_data["light_reference"] = light_reference
+        if frame_times_dict:
+            stimulus_data["frame_times"] = frame_times_dict
+        if stimulus_data:
+            session.add_stimulus(stimulus_data)
+        
+        session.set_source_files(cmcr_path=cmcr_path_obj, cmtr_path=cmtr_path_obj)
+        session.warnings.extend(warnings)
+        session.mark_step_complete("load_recording")
+        
+        # Memory usage warning (T043)
+        mem_gb = session.memory_estimate_gb
+        if mem_gb > 8.0:  # Warning threshold: 8 GB
+            logger.warning(
+                f"Session memory usage is approximately {mem_gb:.2f} GB. "
+                f"Consider using checkpoint() to save intermediate state, "
+                f"or use immediate save mode for very large recordings."
+            )
+        
+        logger.info(f"Stage 1 complete (deferred): {len(units_data)} units loaded to session")
+        return session
+    
+    # Immediate save mode: write to HDF5
+    write_units(root, units_data)
     write_stimulus(root, light_reference, frame_times=frame_times_dict)
     write_metadata(root, metadata)
     write_source_files(root, cmcr_path_obj, cmtr_path_obj)
@@ -549,19 +613,24 @@ def load_recording_with_eimage_sta(
     cutoff_hz: float = 100.0,
     filter_order: int = 2,
     skip_highpass: bool = False,
-    chunk_duration_s: float = 30.0,
-) -> LoadWithEImageSTAResult:
+    chunk_duration_s: float = 10.0,
+    session: Optional["PipelineSession"] = None,
+) -> Union[LoadWithEImageSTAResult, "PipelineSession"]:
     """
     Load recording and compute eimage_sta in a single pass.
     
     This integrated function:
     1. Loads CMTR once (spike times)
-    2. Creates HDF5 with unit data
+    2. Creates HDF5 with unit data (or accumulates in session if provided)
     3. Loads CMCR sensor data in chunks
     4. Computes eimage_sta for each unit using chunk-based processing
-    5. Saves everything at the end
+    5. Saves everything at the end (or stores in session for deferred save)
     
     Memory efficient: Only one chunk of sensor data in memory at a time.
+    
+    Supports deferred HDF5 saving via the optional `session` parameter.
+    When session is provided, all data including eimage_sta features are
+    accumulated in the session instead of being written to HDF5 immediately.
     
     Args:
         cmcr_path: Path to .cmcr file (raw sensor data).
@@ -578,11 +647,14 @@ def load_recording_with_eimage_sta(
         filter_order: Butterworth filter order.
         skip_highpass: If True, skip high-pass filter and mean-center instead.
         chunk_duration_s: Duration of each chunk in seconds (default 30s).
+        session: Optional PipelineSession for deferred saving. When provided,
+            data accumulates in the session and the session is returned.
     
     Returns:
-        LoadWithEImageSTAResult with processing summary.
+        LoadWithEImageSTAResult if session is None (immediate save mode).
+        PipelineSession if session is provided (deferred save mode).
     
-    Example:
+    Example (immediate save - default):
         >>> result = load_recording_with_eimage_sta(
         ...     cmcr_path="O:/data/recording.cmcr",
         ...     cmtr_path="O:/data/recording.cmtr",
@@ -592,6 +664,16 @@ def load_recording_with_eimage_sta(
         ...     window_range=(-10, 40),
         ...     chunk_duration_s=30.0,
         ... )
+    
+    Example (deferred save):
+        >>> from hdmea.pipeline import create_session
+        >>> session = create_session(cmcr_path="O:/data/recording.cmcr")
+        >>> session = load_recording_with_eimage_sta(
+        ...     cmcr_path="O:/data/recording.cmcr",
+        ...     cmtr_path="O:/data/recording.cmtr",
+        ...     session=session,
+        ... )
+        >>> session.save()  # Save all data including eimage_sta
     """
     import time
     import h5py
@@ -690,25 +772,11 @@ def load_recording_with_eimage_sta(
                 warnings_list.append(f"Frame timestamp detection failed: {e}")
     
     # =========================================================================
-    # STEP 3: Derive dataset_id and create HDF5
+    # STEP 3: Derive dataset_id and create HDF5 (or prepare session)
     # =========================================================================
     if dataset_id is None:
         dataset_id = derive_dataset_id(cmcr_path, cmtr_path)
         logger.info(f"Derived dataset_id: {dataset_id}")
-    
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    hdf5_path = output_dir / f"{dataset_id}.h5"
-    
-    logger.info(f"Step 3: Creating HDF5 file: {hdf5_path}")
-    
-    # Create HDF5 file
-    root = create_recording_hdf5(
-        hdf5_path,
-        dataset_id=dataset_id,
-        config={},
-        overwrite=force,
-    )
     
     # Process units: compute firing rates and convert spike_times
     recording_duration_us = cmtr_result.get("metadata", {}).get("recording_duration_s", 0) * 1e6
@@ -719,9 +787,6 @@ def load_recording_with_eimage_sta(
             duration_us = recording_duration_us if recording_duration_us > 0 else spike_times[-1] + 1e6
             unit_info["firing_rate_10hz"] = compute_firing_rate(spike_times, duration_us, bin_rate_hz=10)
             unit_info["spike_times"] = _convert_spike_times_to_samples(spike_times, sampling_rate)
-    
-    # Write units to HDF5
-    write_units(root, units_data)
     
     # Build complete metadata
     metadata = {
@@ -734,18 +799,55 @@ def load_recording_with_eimage_sta(
         metadata["frame_timestamps"] = frame_timestamps
         metadata["frame_time"] = (frame_timestamps / sampling_rate).astype(np.float64)
     
-    write_metadata(root, metadata)
-    
-    # Write stimulus data (light reference and frame times)
+    # Build stimulus data
     frame_times_dict = None
     if frame_timestamps is not None:
         frame_times_dict = {"default": frame_timestamps}
-    write_stimulus(root, light_reference, frame_times=frame_times_dict)
     
-    write_source_files(root, cmcr_path, cmtr_path)
+    # Variables for immediate mode
+    hdf5_path = None
+    root = None
     
-    # Close root to use h5py directly
-    root.close()
+    if session is None:
+        # Immediate save mode: create HDF5 file
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        hdf5_path = output_dir / f"{dataset_id}.h5"
+        
+        logger.info(f"Step 3: Creating HDF5 file: {hdf5_path}")
+        
+        root = create_recording_hdf5(
+            hdf5_path,
+            dataset_id=dataset_id,
+            config={},
+            overwrite=force,
+        )
+        
+        # Write units to HDF5
+        write_units(root, units_data)
+        write_metadata(root, metadata)
+        write_stimulus(root, light_reference, frame_times=frame_times_dict)
+        write_source_files(root, cmcr_path, cmtr_path)
+        
+        # Close root to use h5py directly
+        root.close()
+    else:
+        # Deferred save mode: accumulate data in session
+        logger.info(f"Step 3: Accumulating data in session (deferred mode)")
+        
+        session.add_units(units_data)
+        session.add_metadata(metadata)
+        
+        # Build stimulus data
+        stimulus_data = {}
+        if light_reference:
+            stimulus_data["light_reference"] = light_reference
+        if frame_times_dict:
+            stimulus_data["frame_times"] = frame_times_dict
+        if stimulus_data:
+            session.add_stimulus(stimulus_data)
+        
+        session.set_source_files(cmcr_path=cmcr_path, cmtr_path=cmtr_path)
     
     # =========================================================================
     # STEP 4: Prepare spike samples for STA computation
@@ -887,9 +989,12 @@ def load_recording_with_eimage_sta(
         del filtered_valid
     
     # =========================================================================
-    # STEP 6: Finalize and write eimage_sta to HDF5
+    # STEP 6: Finalize and save eimage_sta (to HDF5 or session)
     # =========================================================================
-    logger.info("Step 6: Finalizing STAs and writing to HDF5...")
+    if session is None:
+        logger.info("Step 6: Finalizing STAs and writing to HDF5...")
+    else:
+        logger.info("Step 6: Finalizing STAs and storing in session...")
     
     config = EImageSTAConfig(
         cutoff_hz=cutoff_hz,
@@ -906,8 +1011,62 @@ def load_recording_with_eimage_sta(
     
     units_with_sta = 0
     
-    with h5py.File(hdf5_path, "r+") as hdf5_file:
-        for unit_num in tqdm(unit_spike_samples.keys(), desc="Saving eimage_sta"):
+    if session is None:
+        # Immediate save mode: write to HDF5
+        with h5py.File(hdf5_path, "r+") as hdf5_file:
+            for unit_num in tqdm(unit_spike_samples.keys(), desc="Saving eimage_sta"):
+                total_for_div = total_spikes_for_division.get(unit_num, 0)
+                n_used = spike_counts.get(unit_num, 0)
+                n_excluded = total_for_div - n_used
+                
+                if total_for_div == 0:
+                    sta = np.full_like(sta_accumulators[unit_num], np.nan)
+                else:
+                    sta = sta_accumulators[unit_num] / total_for_div
+                
+                unit_id = f"unit_{int(unit_num):03d}"
+                
+                written = write_eimage_sta_to_hdf5(
+                    hdf5_file,
+                    unit_id,
+                    sta,
+                    n_used,
+                    n_excluded,
+                    config,
+                    sampling_rate,
+                    force=force,
+                )
+                
+                if written:
+                    units_with_sta += 1
+        
+        # Mark stage 1 complete
+        with h5py.File(hdf5_path, "r+") as hdf5_file:
+            if "pipeline" not in hdf5_file:
+                hdf5_file.create_group("pipeline")
+            hdf5_file["pipeline"].attrs["stage1_completed"] = True
+            hdf5_file["pipeline"].attrs["stage1_timestamp"] = datetime.now(timezone.utc).isoformat()
+        
+        elapsed = time.time() - start_time
+        
+        logger.info(
+            f"Integrated load + eimage_sta complete: {len(units_data)} units loaded, "
+            f"{units_with_sta} units with STA, {elapsed:.1f}s total, filter_time={filter_time_total:.1f}s"
+        )
+        
+        return LoadWithEImageSTAResult(
+            hdf5_path=hdf5_path,
+            dataset_id=dataset_id,
+            num_units=len(units_data),
+            units_with_sta=units_with_sta,
+            stage1_completed=True,
+            elapsed_seconds=elapsed,
+            filter_time_seconds=filter_time_total,
+            warnings=warnings_list,
+        )
+    else:
+        # Deferred save mode: store eimage_sta in session
+        for unit_num in tqdm(unit_spike_samples.keys(), desc="Storing eimage_sta in session"):
             total_for_div = total_spikes_for_division.get(unit_num, 0)
             n_used = spike_counts.get(unit_num, 0)
             n_excluded = total_for_div - n_used
@@ -919,44 +1078,47 @@ def load_recording_with_eimage_sta(
             
             unit_id = f"unit_{int(unit_num):03d}"
             
-            written = write_eimage_sta_to_hdf5(
-                hdf5_file,
-                unit_id,
-                sta,
-                n_used,
-                n_excluded,
-                config,
-                sampling_rate,
-                force=force,
+            # Store eimage_sta as a feature in the session
+            session.add_feature(
+                unit_id=unit_id,
+                feature_name="eimage_sta",
+                feature_data=sta,
+                feature_metadata={
+                    "n_spikes_used": n_used,
+                    "n_spikes_excluded": n_excluded,
+                    "cutoff_hz": cutoff_hz,
+                    "filter_order": filter_order,
+                    "pre_samples": pre_samples,
+                    "post_samples": post_samples,
+                    "spike_limit": spike_limit,
+                    "duration_s": duration_s,
+                    "skip_highpass": skip_highpass,
+                    "sampling_rate": sampling_rate,
+                    "window_range": list(window_range),
+                },
             )
-            
-            if written:
-                units_with_sta += 1
-    
-    # Mark stage 1 complete
-    with h5py.File(hdf5_path, "r+") as hdf5_file:
-        if "pipeline" not in hdf5_file:
-            hdf5_file.create_group("pipeline")
-        hdf5_file["pipeline"].attrs["stage1_completed"] = True
-        hdf5_file["pipeline"].attrs["stage1_timestamp"] = datetime.now(timezone.utc).isoformat()
-    
-    elapsed = time.time() - start_time
-    
-    logger.info(
-        f"Integrated load + eimage_sta complete: {len(units_data)} units loaded, "
-        f"{units_with_sta} units with STA, {elapsed:.1f}s total, filter_time={filter_time_total:.1f}s"
-    )
-    
-    return LoadWithEImageSTAResult(
-        hdf5_path=hdf5_path,
-        dataset_id=dataset_id,
-        num_units=len(units_data),
-        units_with_sta=units_with_sta,
-        stage1_completed=True,
-        elapsed_seconds=elapsed,
-        filter_time_seconds=filter_time_total,
-        warnings=warnings_list,
-    )
+            units_with_sta += 1
+        
+        # Mark step complete and add warnings
+        session.warnings.extend(warnings_list)
+        session.mark_step_complete("load_recording_with_eimage_sta")
+        
+        elapsed = time.time() - start_time
+        
+        # Memory usage warning
+        mem_gb = session.memory_estimate_gb
+        if mem_gb > 8.0:  # Warning threshold: 8 GB
+            logger.warning(
+                f"Session memory usage is approximately {mem_gb:.2f} GB. "
+                f"Consider using checkpoint() to save intermediate state."
+            )
+        
+        logger.info(
+            f"Integrated load + eimage_sta complete (deferred): {len(units_data)} units loaded, "
+            f"{units_with_sta} units with STA, {elapsed:.1f}s total, filter_time={filter_time_total:.1f}s"
+        )
+        
+        return session
 
 
 # =============================================================================
@@ -964,39 +1126,176 @@ def load_recording_with_eimage_sta(
 # =============================================================================
 
 def extract_features(
-    hdf5_path: Union[str, Path],
-    features: List[str],
+    hdf5_path: Optional[Union[str, Path]] = None,
+    features: Optional[List[str]] = None,
     *,
     force: bool = False,
     config_overrides: Optional[Dict[str, Any]] = None,
-) -> ExtractionResult:
+    session: Optional["PipelineSession"] = None,
+) -> Union[ExtractionResult, "PipelineSession"]:
     """
     Extract features from loaded HDF5 and write back to same archive.
     
     This is Stage 2 of the pipeline. Reads from HDF5, computes features
     for each unit, and writes results to units/{unit_id}/features/{feature_name}/.
     
+    Supports deferred saving via the optional `session` parameter.
+    When session is provided, features are stored in the session instead of HDF5.
+    
     Args:
-        hdf5_path: Path to HDF5 file from Stage 1.
+        hdf5_path: Path to HDF5 file from Stage 1. Required if session=None.
         features: List of feature names to extract (must be registered).
         force: If True, overwrite existing features. Default: False.
         config_overrides: Optional parameter overrides for extractors.
+        session: Optional PipelineSession for deferred saving.
     
     Returns:
-        ExtractionResult with lists of extracted, skipped, and failed features.
+        ExtractionResult if session is None (immediate save mode).
+        PipelineSession if session is provided (deferred save mode).
     
     Raises:
-        FileNotFoundError: If hdf5_path does not exist.
+        FileNotFoundError: If hdf5_path does not exist (when session=None).
         KeyError: If any feature name is not registered.
         MissingInputError: If required inputs for a feature are missing.
+    
+    Example (immediate save):
+        >>> result = extract_features(
+        ...     hdf5_path="artifacts/recording.h5",
+        ...     features=["frif", "on_off"],
+        ... )
+    
+    Example (deferred save):
+        >>> session = load_recording(..., session=session)
+        >>> session = extract_features(
+        ...     features=["frif", "on_off"],
+        ...     session=session,
+        ... )
+        >>> session.save()
     """
     from hdmea.features.registry import FeatureRegistry
     
-    hdf5_path = Path(hdf5_path)
+    features = features or []
     warnings = []
     extracted = []
     skipped = []
     failed = []
+    
+    # =========================================================================
+    # Session-based vs HDF5-based mode
+    # =========================================================================
+    if session is not None:
+        # Deferred save mode: extract from session data using adapters
+        from hdmea.features.base import DictAdapter
+        
+        # Check that recording data is loaded
+        if "load_recording" not in session.completed_steps and "load_recording_with_eimage_sta" not in session.completed_steps:
+            raise ConfigurationError(
+                "Session does not contain loaded recording data. Run load_recording first."
+            )
+        
+        unit_ids = list(session.units.keys())
+        if not unit_ids:
+            session.warnings.append("No units found in session")
+            session.mark_step_complete("extract_features")
+            return session
+        
+        logger.info(f"Extracting features in session mode for {len(unit_ids)} units: {features}")
+        
+        # Create adapters for session data
+        metadata_adapter = DictAdapter(session.metadata)
+        stimulus_adapter = DictAdapter(session.stimulus)
+        
+        # Process each feature
+        for feature_name in features:
+            try:
+                # Get extractor
+                extractor_class = FeatureRegistry.get(feature_name)
+                extractor = extractor_class(config=config_overrides)
+                
+                # Check if feature already exists for all units
+                all_have_feature = all(
+                    "features" in session.units.get(uid, {}) and 
+                    feature_name in session.units[uid].get("features", {})
+                    for uid in unit_ids
+                )
+                
+                if all_have_feature and not force:
+                    logger.info(f"Skipping {feature_name} - already extracted (cache hit)")
+                    skipped.append(feature_name)
+                    continue
+                
+                # Extract for each unit
+                units_extracted = 0
+                
+                # Temporarily suppress debug logging from extractors to avoid interfering with progress bar
+                # Suppress all hdmea.features.* loggers during extraction
+                features_logger = logging.getLogger("hdmea.features")
+                original_level = features_logger.level
+                features_logger.setLevel(logging.WARNING)
+                
+                try:
+                    # Use tqdm with file=sys.stderr to separate from logging
+                    pbar = tqdm(unit_ids, desc=f"Extracting {feature_name}", leave=True, file=sys.stderr)
+                    for unit_id in pbar:
+                        try:
+                            unit_adapter = DictAdapter(session.units[unit_id])
+                            
+                            result = extractor.extract(
+                                unit_adapter,
+                                stimulus_adapter,
+                                config=config_overrides,
+                                metadata=metadata_adapter,
+                            )
+                            
+                            # Store result in session
+                            # The result from extractors is a dict with feature values
+                            session.add_feature(
+                                unit_id=unit_id,
+                                feature_name=feature_name,
+                                feature_data=result,
+                                feature_metadata={
+                                    "extractor_version": extractor.version,
+                                    "extracted_at": datetime.now(timezone.utc).isoformat(),
+                                },
+                            )
+                            units_extracted += 1
+                            
+                        except Exception as e:
+                            pbar.write(f"Failed to extract {feature_name} for {unit_id}: {e}")
+                            warnings.append(f"Failed {feature_name} for {unit_id}: {e}")
+                finally:
+                    # Restore logging level
+                    features_logger.setLevel(original_level)
+                
+                extracted.append(feature_name)
+                logger.info(f"Extracted feature: {feature_name} for {units_extracted}/{len(unit_ids)} units")
+                
+            except KeyError as e:
+                logger.error(f"Unknown feature: {feature_name}")
+                failed.append(feature_name)
+                warnings.append(str(e))
+            except Exception as e:
+                logger.error(f"Feature extraction failed: {feature_name}: {e}")
+                failed.append(feature_name)
+                warnings.append(f"{feature_name}: {e}")
+        
+        session.warnings.extend(warnings)
+        session.mark_step_complete("extract_features")
+        
+        logger.info(
+            f"Feature extraction complete (session mode): "
+            f"extracted={extracted}, skipped={skipped}, failed={failed}"
+        )
+        
+        return session
+    
+    # =========================================================================
+    # Immediate save mode: read from HDF5
+    # =========================================================================
+    if hdf5_path is None:
+        raise ConfigurationError("hdf5_path is required when session is not provided")
+    
+    hdf5_path = Path(hdf5_path)
     
     # Open HDF5
     root = open_recording_hdf5(hdf5_path, mode="r+")
