@@ -74,3 +74,6 @@ Thumbs.db
 *.tmp
 *.temp
 
+#large data files
+*.h5
+

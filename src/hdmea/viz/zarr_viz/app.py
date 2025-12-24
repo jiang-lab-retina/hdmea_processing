@@ -900,6 +900,13 @@ def render_array_view(node: TreeNode) -> None:
             st.metric("Size", f"{size_mb:.2f} MB")
 
     st.divider()
+    
+    # Check for scalar-like arrays (0-dim or 1-element) and display value directly
+    is_scalar_like = (
+        node.shape is None or 
+        len(node.shape) == 0 or 
+        (len(node.shape) == 1 and node.shape[0] == 1)
+    )
 
     # Load the actual array from file
     file_handle = None
@@ -910,6 +917,40 @@ def render_array_view(node: TreeNode) -> None:
         return
 
     try:
+        # Handle scalar-like arrays - display value prominently
+        if is_scalar_like:
+            try:
+                arr_data = np.asarray(array)
+                # Extract scalar value
+                if arr_data.ndim == 0:
+                    scalar_value = arr_data.item()
+                elif arr_data.size == 1:
+                    scalar_value = arr_data.flat[0]
+                else:
+                    scalar_value = None
+                
+                if scalar_value is not None:
+                    # Display the scalar value prominently
+                    st.markdown("### 📊 Value")
+                    # Format based on type
+                    if isinstance(scalar_value, (int, np.integer)):
+                        st.metric("", int(scalar_value))
+                    elif isinstance(scalar_value, (float, np.floating)):
+                        # Use appropriate precision
+                        if abs(scalar_value) < 0.0001 or abs(scalar_value) > 100000:
+                            st.metric("", f"{scalar_value:.6e}")
+                        else:
+                            st.metric("", f"{scalar_value:.6f}")
+                    else:
+                        st.metric("", str(scalar_value))
+                    
+                    # Show metadata and return (no plot needed for scalar)
+                    render_metadata_panel(array, node)
+                    return
+            except Exception as e:
+                st.warning(f"Could not extract scalar value: {e}")
+                # Fall through to regular array handling
+        
         # Check if array is too large
         if should_warn_large(array):
             size_mb = node.nbytes / (1024 * 1024) if node.nbytes else 0

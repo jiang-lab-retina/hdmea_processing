@@ -566,36 +566,54 @@ class PipelineSession:
                     pass
     
     def _write_dict_to_hdf5(self, group: h5py.Group, data: Dict[str, Any]) -> None:
-        """Recursively write dict to HDF5 group."""
+        """Recursively write dict to HDF5 group, storing all values as datasets."""
         for key, value in data.items():
             # HDF5 requires string keys - convert integers to strings
             str_key = str(key) if not isinstance(key, str) else key
             
-            if isinstance(value, np.ndarray):
-                group.create_dataset(str_key, data=value)
-            elif isinstance(value, dict):
-                subgroup = group.create_group(str_key)
-                self._write_dict_to_hdf5(subgroup, value)
-            elif isinstance(value, (list, tuple)):
-                # Convert list/tuple to numpy array if possible
-                try:
+            # Skip None values
+            if value is None:
+                continue
+            
+            try:
+                if isinstance(value, np.ndarray):
+                    if value.ndim > 0:
+                        group.create_dataset(str_key, data=value)
+                    else:
+                        # Scalar numpy array -> wrap in 1-element array
+                        arr = np.array([value.item()])
+                        group.create_dataset(str_key, data=arr)
+                elif isinstance(value, dict):
+                    subgroup = group.create_group(str_key)
+                    self._write_dict_to_hdf5(subgroup, value)
+                elif isinstance(value, (list, tuple)):
+                    # Convert list/tuple to numpy array
                     arr = np.array(value)
                     group.create_dataset(str_key, data=arr)
-                except (ValueError, TypeError):
-                    # Store as string if can't convert
-                    try:
-                        group.attrs[str_key] = str(value)
-                    except Exception:
-                        pass
-            elif value is not None:
-                try:
-                    group.attrs[str_key] = value
-                except TypeError:
-                    # Can't store this type, try string conversion
-                    try:
-                        group.attrs[str_key] = str(value)
-                    except Exception:
-                        pass
+                elif isinstance(value, (int, float)):
+                    # Store scalars as 1-element arrays for GUI visibility
+                    arr = np.array([value])
+                    group.create_dataset(str_key, data=arr)
+                elif isinstance(value, np.integer):
+                    arr = np.array([int(value)], dtype=np.int64)
+                    group.create_dataset(str_key, data=arr)
+                elif isinstance(value, np.floating):
+                    arr = np.array([float(value)], dtype=np.float64)
+                    group.create_dataset(str_key, data=arr)
+                elif isinstance(value, str):
+                    # Store strings as 1-element arrays
+                    dt = h5py.string_dtype(encoding='utf-8')
+                    group.create_dataset(str_key, data=[value], dtype=dt)
+                elif isinstance(value, bytes):
+                    # Decode bytes to string and store as 1-element array
+                    dt = h5py.string_dtype(encoding='utf-8')
+                    group.create_dataset(str_key, data=[value.decode('utf-8', errors='ignore')], dtype=dt)
+                else:
+                    # Unknown type - try to store as string
+                    dt = h5py.string_dtype(encoding='utf-8')
+                    group.create_dataset(str_key, data=[str(value)], dtype=dt)
+            except Exception as e:
+                logger.warning(f"Could not write key '{str_key}' to HDF5: {e}")
     
     @classmethod
     def _restore_session_from_hdf5(cls, path: Path) -> "PipelineSession":
@@ -665,7 +683,11 @@ class PipelineSession:
         for key in group:
             item = group[key]
             if isinstance(item, h5py.Dataset):
-                unit_data[key] = item[:]
+                # Handle scalar datasets (shape ()) vs array datasets
+                if item.shape == ():
+                    unit_data[key] = item[()]
+                else:
+                    unit_data[key] = item[:]
             elif isinstance(item, h5py.Group):
                 if key == "features":
                     unit_data["features"] = {}
@@ -689,7 +711,11 @@ class PipelineSession:
         for key in group:
             item = group[key]
             if isinstance(item, h5py.Dataset):
-                result[key] = item[:]
+                # Handle scalar datasets (shape ()) vs array datasets
+                if item.shape == ():
+                    result[key] = item[()]
+                else:
+                    result[key] = item[:]
             elif isinstance(item, h5py.Group):
                 result[key] = cls._read_dict_from_hdf5(item)
         

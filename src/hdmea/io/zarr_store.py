@@ -262,43 +262,14 @@ def _write_metadata_to_group(
         data: Dictionary of values to write
     """
     for key, value in data.items():
-        if isinstance(value, (int, float)):
-            # Store scalars as 1-element arrays (visible in tree)
-            arr = np.array([value])
-            group.create_dataset(
-                key,
-                data=arr,
-                shape=arr.shape,
-                dtype=arr.dtype,
-                overwrite=True,
-            )
-        elif isinstance(value, str):
-            # Store strings as 1-element object arrays
-            arr = np.array([value], dtype=object)
-            group.create_dataset(
-                key,
-                data=arr,
-                shape=arr.shape,
-                dtype=str,
-                overwrite=True,
-            )
-        elif isinstance(value, dict):
-            # Create subgroup for nested dicts (e.g., sys_meta)
-            subgroup = group.create_group(key, overwrite=True)
-            _write_metadata_to_group(subgroup, value)
-        elif isinstance(value, np.ndarray):
-            # Handle numpy arrays directly
-            if value.ndim > 0:
-                group.create_dataset(
-                    key,
-                    data=value,
-                    shape=value.shape,
-                    dtype=value.dtype,
-                    overwrite=True,
-                )
-            else:
-                # Scalar numpy array -> wrap in 1-element array
-                arr = np.array([value.item()])
+        # Skip None values
+        if value is None:
+            continue
+        
+        try:
+            if isinstance(value, (int, float)):
+                # Store Python scalars as 1-element arrays (visible in tree)
+                arr = np.array([value])
                 group.create_dataset(
                     key,
                     data=arr,
@@ -306,6 +277,93 @@ def _write_metadata_to_group(
                     dtype=arr.dtype,
                     overwrite=True,
                 )
+            elif isinstance(value, np.integer):
+                # Handle numpy integer types (int32, int64, etc.)
+                arr = np.array([int(value)], dtype=np.int64)
+                group.create_dataset(
+                    key,
+                    data=arr,
+                    shape=arr.shape,
+                    dtype=arr.dtype,
+                    overwrite=True,
+                )
+            elif isinstance(value, np.floating):
+                # Handle numpy float types (float32, float64, etc.)
+                arr = np.array([float(value)], dtype=np.float64)
+                group.create_dataset(
+                    key,
+                    data=arr,
+                    shape=arr.shape,
+                    dtype=arr.dtype,
+                    overwrite=True,
+                )
+            elif isinstance(value, str):
+                # Store strings as 1-element object arrays
+                arr = np.array([value], dtype=object)
+                group.create_dataset(
+                    key,
+                    data=arr,
+                    shape=arr.shape,
+                    dtype=str,
+                    overwrite=True,
+                )
+            elif isinstance(value, bytes):
+                # Decode bytes to string
+                arr = np.array([value.decode('utf-8', errors='ignore')], dtype=object)
+                group.create_dataset(
+                    key,
+                    data=arr,
+                    shape=arr.shape,
+                    dtype=str,
+                    overwrite=True,
+                )
+            elif isinstance(value, dict):
+                # Create subgroup for nested dicts (e.g., sys_meta)
+                subgroup = group.create_group(key, overwrite=True)
+                _write_metadata_to_group(subgroup, value)
+            elif isinstance(value, np.ndarray):
+                # Handle numpy arrays directly
+                if value.ndim > 0:
+                    group.create_dataset(
+                        key,
+                        data=value,
+                        shape=value.shape,
+                        dtype=value.dtype,
+                        overwrite=True,
+                    )
+                else:
+                    # Scalar numpy array -> wrap in 1-element array
+                    arr = np.array([value.item()])
+                    group.create_dataset(
+                        key,
+                        data=arr,
+                        shape=arr.shape,
+                        dtype=arr.dtype,
+                        overwrite=True,
+                    )
+            elif isinstance(value, (list, tuple)):
+                # Convert lists/tuples to numpy arrays
+                arr = np.array(value)
+                group.create_dataset(
+                    key,
+                    data=arr,
+                    shape=arr.shape,
+                    dtype=arr.dtype,
+                    overwrite=True,
+                )
+            else:
+                # Try to store as string for unknown types
+                logger.debug(f"Unknown type for metadata key '{key}': {type(value).__name__}, storing as string")
+                arr = np.array([str(value)], dtype=object)
+                group.create_dataset(
+                    key,
+                    data=arr,
+                    shape=arr.shape,
+                    dtype=str,
+                    overwrite=True,
+                )
+        except Exception as e:
+            logger.warning(f"Could not write metadata key '{key}': {e}")
 
 
 def write_metadata(

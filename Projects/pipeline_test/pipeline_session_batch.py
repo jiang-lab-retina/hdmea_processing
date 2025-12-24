@@ -35,11 +35,6 @@ def process_single_recording(cmcr_path: str, cmtr_path: str, output_dir: Path) -
     dataset_id = get_dataset_id_from_cmtr(cmtr_path)
     output_path = output_dir / f"{dataset_id}.h5"
     
-    # Skip if already processed
-    if output_path.exists():
-        logger.info(f"Skipping {dataset_id} - output file already exists")
-        return True
-    
     logger.info(f"Processing {dataset_id}...")
     logger.info(f"  CMCR: {cmcr_path}")
     logger.info(f"  CMTR: {cmtr_path}")
@@ -121,18 +116,19 @@ def main():
         cmcr_path = row["cmcr_path"]
         cmtr_path = row["cmtr_path"]
         dataset_id = get_dataset_id_from_cmtr(cmtr_path)
+        output_path = output_dir / f"{dataset_id}.h5"
+        
+        # Skip if output file already exists
+        if output_path.exists():
+            logger.info(f"[{i}/{len(matched_pairs)}] Skipping {dataset_id} - output file already exists")
+            skipped.append(dataset_id)
+            continue
         
         logger.info(f"\n{'='*60}")
         logger.info(f"Processing {i}/{len(matched_pairs)}: {dataset_id}")
         logger.info(f"{'='*60}")
         
         try:
-            output_path = output_dir / f"{dataset_id}.h5"
-            if output_path.exists():
-                logger.info(f"Skipping {dataset_id} - output file already exists")
-                skipped.append(dataset_id)
-                continue
-            
             success = process_single_recording(cmcr_path, cmtr_path, output_dir)
             if success:
                 successful.append(dataset_id)

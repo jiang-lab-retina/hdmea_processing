@@ -149,33 +149,61 @@ def _write_metadata_to_group(
         data: Dictionary of values to write
     """
     for key, value in data.items():
+        # Skip None values
+        if value is None:
+            continue
+            
         # Delete existing if present
         if key in group:
             del group[key]
         
-        if isinstance(value, (int, float)):
-            # Store scalars as 1-element arrays (visible in tree)
-            arr = np.array([value])
-            group.create_dataset(key, data=arr, dtype=arr.dtype)
-        elif isinstance(value, str):
-            # Store strings as variable-length UTF-8
-            dt = h5py.string_dtype(encoding='utf-8')
-            group.create_dataset(key, data=value, dtype=dt)
-        elif isinstance(value, dict):
-            # Create subgroup for nested dicts (e.g., sys_meta)
-            if key in group:
-                subgroup = group[key]
-            else:
-                subgroup = group.create_group(key)
-            _write_metadata_to_group(subgroup, value)
-        elif isinstance(value, np.ndarray):
-            # Handle numpy arrays directly
-            if value.ndim > 0:
-                group.create_dataset(key, data=value, dtype=value.dtype)
-            else:
-                # Scalar numpy array -> wrap in 1-element array
-                arr = np.array([value.item()])
+        try:
+            if isinstance(value, (int, float)):
+                # Store Python scalars as 1-element arrays (visible in tree)
+                arr = np.array([value])
                 group.create_dataset(key, data=arr, dtype=arr.dtype)
+            elif isinstance(value, np.integer):
+                # Handle numpy integer types (int32, int64, etc.)
+                arr = np.array([int(value)], dtype=np.int64)
+                group.create_dataset(key, data=arr)
+            elif isinstance(value, np.floating):
+                # Handle numpy float types (float32, float64, etc.)
+                arr = np.array([float(value)], dtype=np.float64)
+                group.create_dataset(key, data=arr)
+            elif isinstance(value, str):
+                # Store strings as 1-element arrays for better GUI compatibility
+                dt = h5py.string_dtype(encoding='utf-8')
+                group.create_dataset(key, data=[value], dtype=dt)
+            elif isinstance(value, bytes):
+                # Decode bytes to string and store as 1-element array
+                dt = h5py.string_dtype(encoding='utf-8')
+                group.create_dataset(key, data=[value.decode('utf-8', errors='ignore')], dtype=dt)
+            elif isinstance(value, dict):
+                # Create subgroup for nested dicts (e.g., sys_meta)
+                if key in group:
+                    subgroup = group[key]
+                else:
+                    subgroup = group.create_group(key)
+                _write_metadata_to_group(subgroup, value)
+            elif isinstance(value, np.ndarray):
+                # Handle numpy arrays directly
+                if value.ndim > 0:
+                    group.create_dataset(key, data=value, dtype=value.dtype)
+                else:
+                    # Scalar numpy array -> wrap in 1-element array
+                    arr = np.array([value.item()])
+                    group.create_dataset(key, data=arr, dtype=arr.dtype)
+            elif isinstance(value, (list, tuple)):
+                # Convert lists/tuples to numpy arrays
+                arr = np.array(value)
+                group.create_dataset(key, data=arr)
+            else:
+                # Try to store as string for unknown types
+                logger.debug(f"Unknown type for metadata key '{key}': {type(value).__name__}, storing as string")
+                dt = h5py.string_dtype(encoding='utf-8')
+                group.create_dataset(key, data=[str(value)], dtype=dt)
+        except Exception as e:
+            logger.warning(f"Could not write metadata key '{key}': {e}")
 
 
 def write_units(

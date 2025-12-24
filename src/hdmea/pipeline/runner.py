@@ -17,8 +17,13 @@ from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 import numpy as np
 from tqdm import tqdm
 
-from hdmea.io.cmcr import load_cmcr_data
-from hdmea.io.cmtr import load_cmtr_data, validate_cmcr_cmtr_match
+from hdmea.io.cmcr import load_cmcr_data, add_sys_meta_info
+from hdmea.io.cmtr import (
+    load_cmtr_data,
+    validate_cmcr_cmtr_match,
+    add_cmtr_unit_info,
+    update_hdf5_with_cmtr_unit_info,
+)
 
 if TYPE_CHECKING:
     from hdmea.pipeline.session import PipelineSession
@@ -615,6 +620,8 @@ def load_recording_with_eimage_sta(
     skip_highpass: bool = False,
     chunk_duration_s: float = 10.0,
     session: Optional["PipelineSession"] = None,
+    load_unit_meta: bool = True,
+    load_sys_meta: bool = True,
 ) -> Union[LoadWithEImageSTAResult, "PipelineSession"]:
     """
     Load recording and compute eimage_sta in a single pass.
@@ -649,6 +656,10 @@ def load_recording_with_eimage_sta(
         chunk_duration_s: Duration of each chunk in seconds (default 30s).
         session: Optional PipelineSession for deferred saving. When provided,
             data accumulates in the session and the session is returned.
+        load_unit_meta: If True (default), loads extended unit metadata from CMTR
+            (row, column, SNR, separability, etc.) into unit_meta group.
+        load_sys_meta: If True (default), loads system metadata from source files
+            into metadata/cmcr_meta and metadata/cmtr_meta groups.
     
     Returns:
         LoadWithEImageSTAResult if session is None (immediate save mode).
@@ -746,7 +757,8 @@ def load_recording_with_eimage_sta(
     cmcr_result = load_cmcr_data(cmcr_path)
     sampling_rate = cmcr_result.get("acquisition_rate", 20000.0)
     light_reference = cmcr_result.get("light_reference", {})
-    sys_meta = cmcr_result.get("metadata", {})
+    cmcr_meta = cmcr_result.get("metadata", {})
+    cmtr_meta = cmtr_result.get("metadata", {})
     
     total_samples = min(int(sampling_rate * duration_s), total_samples_available)
     logger.info(f"Sensor data: shape=({total_samples_available}, {n_rows}, {n_cols}), "
@@ -793,7 +805,6 @@ def load_recording_with_eimage_sta(
         "dataset_id": dataset_id,
         "acquisition_rate": sampling_rate,
         "sample_interval": 1.0 / sampling_rate,
-        "sys_meta": sys_meta,
     }
     if frame_timestamps is not None:
         metadata["frame_timestamps"] = frame_timestamps
@@ -1047,6 +1058,16 @@ def load_recording_with_eimage_sta(
             hdf5_file["pipeline"].attrs["stage1_completed"] = True
             hdf5_file["pipeline"].attrs["stage1_timestamp"] = datetime.now(timezone.utc).isoformat()
         
+        # Add extended unit metadata from CMTR if requested
+        if load_unit_meta:
+            logger.info("Adding extended unit metadata from CMTR...")
+            update_hdf5_with_cmtr_unit_info(hdf5_path, cmtr_path, force=True)
+        
+        # Add system metadata from CMCR/CMTR if requested
+        if load_sys_meta:
+            logger.info("Adding system metadata from CMCR/CMTR...")
+            add_sys_meta_info(hdf5_path=hdf5_path, _cmcr_meta=cmcr_meta, _cmtr_meta=cmtr_meta, force=True)
+        
         elapsed = time.time() - start_time
         
         logger.info(
@@ -1098,6 +1119,16 @@ def load_recording_with_eimage_sta(
                 },
             )
             units_with_sta += 1
+        
+        # Add extended unit metadata from CMTR if requested
+        if load_unit_meta:
+            logger.info("Adding extended unit metadata from CMTR...")
+            add_cmtr_unit_info(session=session, cmtr_path=cmtr_path)
+        
+        # Add system metadata from CMCR/CMTR if requested
+        if load_sys_meta:
+            logger.info("Adding system metadata from CMCR/CMTR...")
+            add_sys_meta_info(session=session, _cmcr_meta=cmcr_meta, _cmtr_meta=cmtr_meta)
         
         # Mark step complete and add warnings
         session.warnings.extend(warnings_list)

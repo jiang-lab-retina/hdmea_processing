@@ -34,6 +34,9 @@ session = load_recording_with_eimage_sta(
     spike_limit=10000,
     window_range=(-10, 40),
     session=session,  # Pass session for deferred mode
+    unit_ids=["2", "7", "9"],
+    # load_unit_meta=True,  # Default: loads extended CMTR unit metadata -> units/*/unit_meta
+    # load_sys_meta=True,   # Default: loads file metadata -> metadata/cmcr_meta, cmtr_meta
 )
 
 
@@ -55,19 +58,19 @@ session = compute_sta(
     session=session,
 )
 
-# Feature extraction in deferred mode - now fully supported!
-# FRIF extractor works with session data via DictAdapter
-session = extract_features(
-    features=["frif"],
-    session=session,
-)
+# # Feature extraction in deferred mode - now fully supported!
+# # FRIF extractor works with session data via DictAdapter
+# session = extract_features(
+#     features=["frif"],
+#     session=session,
+# )
 
-# Verify FRIF was extracted in session
-units_with_frif = sum(
-    1 for u in session.units.values()
-    if "features" in u and "frif" in u.get("features", {})
-)
-print(f"\nFRIF extraction in session mode: {units_with_frif}/{session.unit_count} units")
+# # Verify FRIF was extracted in session
+# units_with_frif = sum(
+#     1 for u in session.units.values()
+#     if "features" in u and "frif" in u.get("features", {})
+# )
+# print(f"\nFRIF extraction in session mode: {units_with_frif}/{session.unit_count} units")
 
 # 3. Save once at the end
 hdf5_path = session.save()

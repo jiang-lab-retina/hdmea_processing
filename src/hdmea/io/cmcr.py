@@ -7,7 +7,7 @@ CMCR files contain raw sensor data and light reference from HD-MEA recordings.
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple, Union
 
 import h5py
 import numpy as np
@@ -164,6 +164,200 @@ def load_cmcr_data(cmcr_path: Path) -> Dict[str, Any]:
             file_path=str(cmcr_path),
             original_error=e,
         )
+
+
+def add_sys_meta_info(
+    session: Optional[Any] = None,
+    hdf5_path: Optional[Union[str, Path]] = None,
+    cmcr_path: Optional[Union[str, Path]] = None,
+    cmtr_path: Optional[Union[str, Path]] = None,
+    *,
+    force: bool = False,
+    _cmcr_meta: Optional[Dict[str, Any]] = None,
+    _cmtr_meta: Optional[Dict[str, Any]] = None,
+) -> Union[Any, Dict[str, Any]]:
+    """
+    Add system metadata from CMCR and CMTR files to a session or HDF5 file.
+    
+    This unified function supports two modes:
+    1. Session mode: Pass a PipelineSession to add metadata in-memory
+    2. HDF5 mode: Pass an hdf5_path to update the file directly
+    
+    Extracts and saves metadata from both source files:
+    - cmcr_meta: From CMCR file (DateTime, FileVersion, LB.*, ID.*, etc.)
+    - cmtr_meta: From CMTR file (spike sorter metadata, recording info, etc.)
+    
+    Data is stored in:
+    - metadata/cmcr_meta group (CMCR file metadata)
+    - metadata/cmtr_meta group (CMTR file metadata)
+    
+    Args:
+        session: PipelineSession with metadata already loaded (mode 1)
+        hdf5_path: Path to existing HDF5 file to update (mode 2)
+        cmcr_path: Path to CMCR file. If None, uses the path stored in
+            session.source_files["cmcr_path"] or HDF5 source_files group.
+        cmtr_path: Path to CMTR file. If None, uses the path stored in
+            session.source_files["cmtr_path"] or HDF5 source_files group.
+        force: If True, overwrite existing metadata groups
+        _cmcr_meta: (Internal) Pre-loaded CMCR metadata dict to avoid redundant loading.
+        _cmtr_meta: (Internal) Pre-loaded CMTR metadata dict to avoid redundant loading.
+    
+    Returns:
+        - Session mode: Updated session with cmcr_meta and cmtr_meta in metadata
+        - HDF5 mode: Dict with {"hdf5_path": Path, "cmcr_fields": int, "cmtr_fields": int}
+    
+    Raises:
+        ValueError: If neither session nor hdf5_path is provided, or if both are
+        FileNotFoundError: If source files do not exist
+    
+    Example (session mode):
+        >>> session = load_recording(cmcr_path, cmtr_path, session=session)
+        >>> session = add_sys_meta_info(session=session)
+        >>> session.save()
+    
+    Example (HDF5 mode):
+        >>> result = add_sys_meta_info(hdf5_path="artifacts/recording.h5", force=True)
+    """
+    import h5py
+    from hdmea.io.cmtr import load_cmtr_data
+    from hdmea.io.hdf5_store import _write_metadata_to_group
+    
+    # Validate arguments - must have exactly one of session or hdf5_path
+    if session is None and hdf5_path is None:
+        raise ValueError("Must provide either session or hdf5_path")
+    if session is not None and hdf5_path is not None:
+        raise ValueError("Cannot provide both session and hdf5_path - use one or the other")
+    
+    # =========================================================================
+    # HDF5 MODE: Update file directly
+    # =========================================================================
+    if hdf5_path is not None:
+        hdf5_path = Path(hdf5_path)
+        
+        if not hdf5_path.exists():
+            raise FileNotFoundError(f"HDF5 file not found: {hdf5_path}")
+        
+        # Get paths from HDF5 if not provided
+        with h5py.File(hdf5_path, "r") as f:
+            if cmcr_path is None and _cmcr_meta is None:
+                if "source_files" in f and "cmcr_path" in f["source_files"].attrs:
+                    cmcr_path = Path(f["source_files"].attrs["cmcr_path"])
+                    logger.info(f"Using CMCR path from HDF5: {cmcr_path}")
+            if cmtr_path is None and _cmtr_meta is None:
+                if "source_files" in f and "cmtr_path" in f["source_files"].attrs:
+                    cmtr_path = Path(f["source_files"].attrs["cmtr_path"])
+                    logger.info(f"Using CMTR path from HDF5: {cmtr_path}")
+        
+        # Load metadata from source files
+        cmcr_meta = _cmcr_meta
+        cmtr_meta = _cmtr_meta
+        
+        if cmcr_meta is None and cmcr_path is not None:
+            cmcr_path = Path(cmcr_path)
+            if cmcr_path.exists():
+                cmcr_result = load_cmcr_data(cmcr_path)
+                cmcr_meta = cmcr_result.get("metadata", {})
+                logger.info(f"Loaded {len(cmcr_meta)} fields from CMCR: {cmcr_path}")
+            else:
+                logger.warning(f"CMCR file not found: {cmcr_path}")
+        
+        if cmtr_meta is None and cmtr_path is not None:
+            cmtr_path = Path(cmtr_path)
+            if cmtr_path.exists():
+                cmtr_result = load_cmtr_data(cmtr_path)
+                cmtr_meta = cmtr_result.get("metadata", {})
+                logger.info(f"Loaded {len(cmtr_meta)} fields from CMTR: {cmtr_path}")
+            else:
+                logger.warning(f"CMTR file not found: {cmtr_path}")
+        
+        cmcr_fields = 0
+        cmtr_fields = 0
+        
+        with h5py.File(hdf5_path, "r+") as f:
+            if "metadata" not in f:
+                f.create_group("metadata")
+            
+            metadata_group = f["metadata"]
+            
+            # Write CMCR metadata
+            if cmcr_meta:
+                if "cmcr_meta" in metadata_group:
+                    if force:
+                        del metadata_group["cmcr_meta"]
+                    else:
+                        logger.debug("Skipping cmcr_meta: already exists (use force=True)")
+                        cmcr_meta = None
+                
+                if cmcr_meta:
+                    cmcr_group = metadata_group.create_group("cmcr_meta")
+                    _write_metadata_to_group(cmcr_group, cmcr_meta)
+                    cmcr_fields = len(cmcr_meta)
+                    logger.info(f"Added {cmcr_fields} cmcr_meta fields")
+            
+            # Write CMTR metadata
+            if cmtr_meta:
+                if "cmtr_meta" in metadata_group:
+                    if force:
+                        del metadata_group["cmtr_meta"]
+                    else:
+                        logger.debug("Skipping cmtr_meta: already exists (use force=True)")
+                        cmtr_meta = None
+                
+                if cmtr_meta:
+                    cmtr_group = metadata_group.create_group("cmtr_meta")
+                    _write_metadata_to_group(cmtr_group, cmtr_meta)
+                    cmtr_fields = len(cmtr_meta)
+                    logger.info(f"Added {cmtr_fields} cmtr_meta fields")
+        
+        return {
+            "hdf5_path": hdf5_path,
+            "cmcr_fields": cmcr_fields,
+            "cmtr_fields": cmtr_fields,
+        }
+    
+    # =========================================================================
+    # SESSION MODE: Add to in-memory session
+    # =========================================================================
+    # Load CMCR metadata
+    cmcr_meta = _cmcr_meta
+    if cmcr_meta is None:
+        if cmcr_path is None:
+            if hasattr(session, 'source_files') and session.source_files.get("cmcr_path"):
+                cmcr_path = session.source_files["cmcr_path"]
+        
+        if cmcr_path is not None:
+            cmcr_path = Path(cmcr_path)
+            if cmcr_path.exists():
+                cmcr_result = load_cmcr_data(cmcr_path)
+                cmcr_meta = cmcr_result.get("metadata", {})
+                logger.info(f"Loaded {len(cmcr_meta)} fields from CMCR: {cmcr_path}")
+    
+    # Load CMTR metadata
+    cmtr_meta = _cmtr_meta
+    if cmtr_meta is None:
+        if cmtr_path is None:
+            if hasattr(session, 'source_files') and session.source_files.get("cmtr_path"):
+                cmtr_path = session.source_files["cmtr_path"]
+        
+        if cmtr_path is not None:
+            cmtr_path = Path(cmtr_path)
+            if cmtr_path.exists():
+                cmtr_result = load_cmtr_data(cmtr_path)
+                cmtr_meta = cmtr_result.get("metadata", {})
+                logger.info(f"Loaded {len(cmtr_meta)} fields from CMTR: {cmtr_path}")
+    
+    # Add to session metadata
+    if cmcr_meta:
+        session.metadata["cmcr_meta"] = cmcr_meta
+        logger.info(f"Added {len(cmcr_meta)} cmcr_meta fields to session")
+    
+    if cmtr_meta:
+        session.metadata["cmtr_meta"] = cmtr_meta
+        logger.info(f"Added {len(cmtr_meta)} cmtr_meta fields to session")
+    
+    session.mark_step_complete("add_sys_meta_info")
+    
+    return session
 
 
 def _downsample_light_reference(
