@@ -27,10 +27,10 @@ from matplotlib.colors import Normalize
 # =============================================================================
 
 # Input file
-HDF5_FILE = Path(__file__).parent / "export" / "2024.03.25-13.44.04-Rec.h5"
+HDF5_FILE = Path(__file__).parent / "export" / "2024.03.25-15.38.58-Rec.h5"
 
 # Output
-OUTPUT_DIR = Path(__file__).parent / "plots" / "2024.03.25-13.44.04-Rec"
+OUTPUT_DIR = Path(__file__).parent / "plots" / "2024.03.25-15.38.58-Rec"
 
 # Visualization parameters (for display only, not for recalculation)
 R2_THRESHOLD = 0.8
@@ -77,6 +77,18 @@ class ONHData:
     method: Optional[str] = None
     # Final valid intersection points (from main cluster)
     cluster_points: Optional[np.ndarray] = None
+    # Global optimization method fields
+    n_cells_used: Optional[int] = None
+    n_centroids_used: Optional[int] = None
+    total_squared_error: Optional[float] = None
+    centroid_exclude_fraction: Optional[float] = None
+    max_distance_from_center: Optional[float] = None
+    # Outlier removal fields (two-stage)
+    outlier_unit_ids_stage1: Optional[List[str]] = None  # Removed before intersection filter
+    outlier_unit_ids_stage2: Optional[List[str]] = None  # Removed during final optimization
+    outlier_unit_ids: Optional[List[str]] = None  # All outliers combined
+    kept_unit_ids: Optional[List[str]] = None
+    max_outlier_fraction: Optional[float] = None
 
 
 # =============================================================================
@@ -176,6 +188,9 @@ def load_pathway_data(hdf5_path: Path) -> Tuple[Dict[str, PathwayData], Optional
     """
     Load pathway fit data, centroid direction, and pre-computed ONH from HDF5 file.
     
+    Per-unit pathway data comes from units/{unit_id}/features/ap_tracking/ap_pathway.
+    Shared ONH data comes from metadata/ap_tracking/all_ap_intersection.
+    
     Returns:
         Tuple of (pathways dict with direction info, ONHData or None)
     """
@@ -187,6 +202,48 @@ def load_pathway_data(hdf5_path: Path) -> Tuple[Dict[str, PathwayData], Optional
             print("No 'units' group found in HDF5 file")
             return pathways, onh_data
         
+        # Load pre-computed ONH intersection from metadata/ap_tracking/
+        meta_ap_path = "metadata/ap_tracking"
+        if meta_ap_path in f:
+            meta_ap = f[meta_ap_path]
+            if "all_ap_intersection" in meta_ap:
+                int_grp = meta_ap["all_ap_intersection"]
+                if "x" in int_grp and "y" in int_grp:
+                    x_val = int_grp["x"][()]
+                    y_val = int_grp["y"][()]
+                    
+                    if not np.isnan(x_val) and not np.isnan(y_val):
+                        # Read optional enhanced fields
+                        onh_data = ONHData(
+                            x=float(x_val),
+                            y=float(y_val),
+                            mse=_read_scalar(int_grp, "mse"),
+                            rmse=_read_scalar(int_grp, "rmse"),
+                            n_cluster_points=_read_scalar(int_grp, "n_cluster_points", int),
+                            n_total_intersections=_read_scalar(int_grp, "n_total_intersections", int),
+                            n_valid_after_direction=_read_scalar(int_grp, "n_valid_after_direction", int),
+                            consensus_direction=_read_scalar(int_grp, "consensus_direction"),
+                            r2_threshold=_read_scalar(int_grp, "r2_threshold"),
+                            direction_tolerance=_read_scalar(int_grp, "direction_tolerance"),
+                            cluster_eps=_read_scalar(int_grp, "cluster_eps"),
+                            cluster_min_samples=_read_scalar(int_grp, "cluster_min_samples", int),
+                            method=_read_string(int_grp, "method"),
+                            cluster_points=int_grp["cluster_points"][:] if "cluster_points" in int_grp else None,
+                            # Global optimization method fields
+                            n_cells_used=_read_scalar(int_grp, "n_cells_used", int),
+                            n_centroids_used=_read_scalar(int_grp, "n_centroids_used", int),
+                            total_squared_error=_read_scalar(int_grp, "total_squared_error"),
+                            centroid_exclude_fraction=_read_scalar(int_grp, "centroid_exclude_fraction"),
+                            max_distance_from_center=_read_scalar(int_grp, "max_distance_from_center"),
+                            # Outlier removal fields (two-stage)
+                            outlier_unit_ids_stage1=[x.decode() if isinstance(x, bytes) else x for x in int_grp["outlier_unit_ids_stage1"][:]] if "outlier_unit_ids_stage1" in int_grp else None,
+                            outlier_unit_ids_stage2=[x.decode() if isinstance(x, bytes) else x for x in int_grp["outlier_unit_ids_stage2"][:]] if "outlier_unit_ids_stage2" in int_grp else None,
+                            outlier_unit_ids=[x.decode() if isinstance(x, bytes) else x for x in int_grp["outlier_unit_ids"][:]] if "outlier_unit_ids" in int_grp else None,
+                            kept_unit_ids=[x.decode() if isinstance(x, bytes) else x for x in int_grp["kept_unit_ids"][:]] if "kept_unit_ids" in int_grp else None,
+                            max_outlier_fraction=_read_scalar(int_grp, "max_outlier_fraction"),
+                        )
+        
+        # Load per-unit pathway data
         for unit_id in f["units"].keys():
             unit_path = f"units/{unit_id}"
             ap_path = f"{unit_path}/features/ap_tracking"
@@ -239,34 +296,6 @@ def load_pathway_data(hdf5_path: Path) -> Tuple[Dict[str, PathwayData], Optional
                     start_point=start_point,
                     centroids=centroids,
                 )
-            
-            # Load pre-computed ONH intersection (same for all units)
-            if onh_data is None:
-                int_path = f"{ap_path}/all_ap_intersection"
-                if int_path in f:
-                    int_grp = f[int_path]
-                    if "x" in int_grp and "y" in int_grp:
-                        x_val = int_grp["x"][()]
-                        y_val = int_grp["y"][()]
-                        
-                        if not np.isnan(x_val) and not np.isnan(y_val):
-                            # Read optional enhanced fields
-                            onh_data = ONHData(
-                                x=float(x_val),
-                                y=float(y_val),
-                                mse=_read_scalar(int_grp, "mse"),
-                                rmse=_read_scalar(int_grp, "rmse"),
-                                n_cluster_points=_read_scalar(int_grp, "n_cluster_points", int),
-                                n_total_intersections=_read_scalar(int_grp, "n_total_intersections", int),
-                                n_valid_after_direction=_read_scalar(int_grp, "n_valid_after_direction", int),
-                                consensus_direction=_read_scalar(int_grp, "consensus_direction"),
-                                r2_threshold=_read_scalar(int_grp, "r2_threshold"),
-                                direction_tolerance=_read_scalar(int_grp, "direction_tolerance"),
-                                cluster_eps=_read_scalar(int_grp, "cluster_eps"),
-                                cluster_min_samples=_read_scalar(int_grp, "cluster_min_samples", int),
-                                method=_read_string(int_grp, "method"),
-                                cluster_points=int_grp["cluster_points"][:] if "cluster_points" in int_grp else None,
-                            )
     
     return pathways, onh_data
 
@@ -380,13 +409,27 @@ def plot_rays_with_direction(
         )
     
     valid_count = 0
+    outlier_count = 0
+    
+    # Get outlier list from onh_data
+    outlier_unit_ids = onh_data.outlier_unit_ids if onh_data and onh_data.outlier_unit_ids else []
+    
     # Plot each ray extending to all valid intersections
     for uid, pw in pathways.items():
         if pw.r_squared < r2_threshold:
             continue
         
-        # Color based on direction validity
-        if pw.direction_valid:
+        # Check if this unit is an outlier (removed during trimming)
+        is_outlier = uid in outlier_unit_ids
+        
+        # Color based on direction validity and outlier status
+        if is_outlier:
+            # Outliers are shown in gray
+            color = "#6e7681"  # Gray color for outliers
+            alpha = 0.5
+            linewidth = 0.6
+            outlier_count += 1
+        elif pw.direction_valid:
             color = "#39d353"
             alpha = 0.7
             linewidth = 0.8  # Thinner lines for clarity
@@ -473,12 +516,21 @@ def plot_rays_with_direction(
         ax.text(compass_x, compass_y + 5, f"Consensus: {consensus_direction:.0f} deg",
                color='#58a6ff', fontsize=9, ha='center')
     
+    # Add legend entries for valid and outlier units
+    ax.plot([], [], color="#39d353", linewidth=2, label=f"Valid units ({valid_count})")
+    if outlier_count > 0:
+        ax.plot([], [], color="#6e7681", linewidth=2, label=f"Outliers ({outlier_count})")
+    
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_max, y_min)
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel("Column", color="#c9d1d9")
     ax.set_ylabel("Row", color="#c9d1d9")
-    ax.set_title(f"AP Pathway Rays ({valid_count} valid)", color="#c9d1d9", fontsize=12, fontweight="bold")
+    title = f"AP Pathway Rays ({valid_count} valid"
+    if outlier_count > 0:
+        title += f", {outlier_count} outliers"
+    title += ")"
+    ax.set_title(title, color="#c9d1d9", fontsize=12, fontweight="bold")
     ax.tick_params(colors="#8b949e")
     for spine in ax.spines.values():
         spine.set_color("#30363d")
@@ -604,7 +656,7 @@ def plot_unit_centroids(
     onh_data: Optional[ONHData],
     r2_threshold: float = 0.8,
 ) -> None:
-    """Plot centroids from each valid unit with different colors."""
+    """Plot centroids from each valid unit with different colors. Outliers shown in gray."""
     ax.set_facecolor("#161b22")
     
     # MEA boundary
@@ -614,10 +666,18 @@ def plot_unit_centroids(
         linestyle="-", linewidth=2, alpha=0.3, zorder=1,
     ))
     
+    # Get outlier list from onh_data
+    outlier_unit_ids = onh_data.outlier_unit_ids if onh_data and onh_data.outlier_unit_ids else []
+    
+    # Filter pathways: valid units and outliers
     valid_pathways = {
         k: v for k, v in pathways.items()
         if v.r_squared >= r2_threshold and v.direction_valid and v.centroids is not None
     }
+    
+    # Separate kept units and outlier units
+    kept_pathways = {k: v for k, v in valid_pathways.items() if k not in outlier_unit_ids}
+    outlier_pathways = {k: v for k, v in valid_pathways.items() if k in outlier_unit_ids}
     
     if not valid_pathways:
         ax.text(0.5, 0.5, "No valid units with centroids", 
@@ -626,11 +686,36 @@ def plot_unit_centroids(
         ax.set_title("Unit Centroids", color="#c9d1d9", fontsize=12, fontweight="bold")
         return
     
-    n_units = len(valid_pathways)
-    cmap = plt.colormaps["tab20" if n_units <= 20 else "hsv"]
-    colors = [cmap(i / n_units) for i in range(n_units)]
+    n_kept = len(kept_pathways)
+    cmap = plt.colormaps["tab20" if n_kept <= 20 else "hsv"]
+    colors = [cmap(i / max(1, n_kept)) for i in range(n_kept)]
     
-    for i, (unit_id, pw) in enumerate(valid_pathways.items()):
+    # Plot outliers first (in gray, behind kept units)
+    for unit_id, pw in outlier_pathways.items():
+        centroids = pw.centroids
+        if centroids is None or len(centroids) == 0:
+            continue
+        
+        gray_color = "#6e7681"  # Gray color for outliers
+        
+        if centroids.shape[1] == 3:
+            sorted_idx = np.argsort(centroids[:, 0])
+            sorted_centroids = centroids[sorted_idx]
+            x_coords = sorted_centroids[:, 1]
+            y_coords = sorted_centroids[:, 2]
+            t_coords = sorted_centroids[:, 0]
+        else:
+            x_coords = centroids[:, 0]
+            y_coords = centroids[:, 1]
+            t_coords = np.arange(len(centroids))
+        
+        ax.plot(y_coords, x_coords, color=gray_color, linewidth=1.0, alpha=0.4, zorder=2)
+        sizes = 15 + (t_coords - t_coords.min()) / (t_coords.max() - t_coords.min() + 1e-6) * 25
+        ax.scatter(y_coords, x_coords, c=gray_color, s=sizes, alpha=0.4, 
+                  edgecolors='white', linewidths=0.3, zorder=2)
+    
+    # Plot kept units (colored)
+    for i, (unit_id, pw) in enumerate(kept_pathways.items()):
         centroids = pw.centroids
         if centroids is None or len(centroids) == 0:
             continue
@@ -660,16 +745,24 @@ def plot_unit_centroids(
                   edgecolors="white", linewidths=3, zorder=10,
                   label=f"ONH ({onh_data.x:.1f}, {onh_data.y:.1f})")
     
+    # Add legend entries for outliers
+    if len(outlier_pathways) > 0:
+        ax.plot([], [], color="#6e7681", linewidth=2, label=f"Outliers ({len(outlier_pathways)})")
+    
     ax.set_xlim(-5, 70)
     ax.set_ylim(70, -5)
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel("Column", color="#c9d1d9")
     ax.set_ylabel("Row", color="#c9d1d9")
-    ax.set_title(f"Unit Centroids ({len(valid_pathways)} units)", color="#c9d1d9", fontsize=12, fontweight="bold")
+    title = f"Unit Centroids ({len(kept_pathways)} kept"
+    if len(outlier_pathways) > 0:
+        title += f", {len(outlier_pathways)} outliers"
+    title += ")"
+    ax.set_title(title, color="#c9d1d9", fontsize=12, fontweight="bold")
     ax.tick_params(colors="#8b949e")
     for spine in ax.spines.values():
         spine.set_color("#30363d")
-    if onh_data:
+    if onh_data or len(outlier_pathways) > 0:
         ax.legend(loc="upper right", facecolor="#21262d", edgecolor="#30363d", 
                  labelcolor="#c9d1d9", fontsize=9)
 
@@ -794,10 +887,31 @@ def plot_summary(
     """
         if onh_data.rmse is not None:
             summary += f"    RMSE: {onh_data.rmse:.4f}\n"
-        if onh_data.n_cluster_points is not None:
-            summary += f"    Cluster points: {onh_data.n_cluster_points}\n"
-        if onh_data.n_total_intersections is not None:
-            summary += f"    Total intersections: {onh_data.n_total_intersections}\n"
+        
+        # Show method-specific details
+        if onh_data.method == "iterative_refinement":
+            if onh_data.n_cells_used is not None:
+                summary += f"    Cells used: {onh_data.n_cells_used}\n"
+            if onh_data.n_centroids_used is not None:
+                summary += f"    Centroids used: {onh_data.n_centroids_used}\n"
+            if onh_data.outlier_unit_ids is not None:
+                summary += f"    Removed for boundary: {len(onh_data.outlier_unit_ids)}\n"
+            # Calculate distance from center
+            dist = np.sqrt((onh_data.x - 33)**2 + (onh_data.y - 33)**2)
+            max_dist = onh_data.max_distance_from_center or 98
+            summary += f"    Distance from center: {dist:.1f}/{max_dist:.0f} px\n"
+        elif onh_data.method == "global_optimization":
+            if onh_data.n_cells_used is not None:
+                summary += f"    Cells used: {onh_data.n_cells_used}\n"
+            if onh_data.n_centroids_used is not None:
+                summary += f"    Centroids used: {onh_data.n_centroids_used}\n"
+        else:
+            # Legacy clustering method
+            if onh_data.n_cluster_points is not None:
+                summary += f"    Cluster points: {onh_data.n_cluster_points}\n"
+            if onh_data.n_total_intersections is not None:
+                summary += f"    Total intersections: {onh_data.n_total_intersections}\n"
+        
         if onh_data.consensus_direction is not None:
             summary += f"    Consensus direction: {onh_data.consensus_direction:.1f} deg\n"
     
@@ -1039,7 +1153,12 @@ def visualize_intersection(
         print(f"ONH: ({onh_data.x:.2f}, {onh_data.y:.2f}), method={onh_data.method}")
         if onh_data.consensus_direction is not None:
             print(f"Consensus direction: {onh_data.consensus_direction:.1f} deg")
-        if onh_data.n_cluster_points is not None:
+        if onh_data.method == "iterative_refinement":
+            n_cells = onh_data.n_cells_used or 0
+            n_removed = len(onh_data.outlier_unit_ids) if onh_data.outlier_unit_ids else 0
+            dist = np.sqrt((onh_data.x - 33)**2 + (onh_data.y - 33)**2)
+            print(f"Cells: {n_cells}, Removed: {n_removed}, Distance: {dist:.1f} px")
+        elif onh_data.n_cluster_points is not None:
             print(f"Cluster: {onh_data.n_cluster_points}/{onh_data.n_total_intersections} points")
     else:
         print("Warning: No ONH data found in HDF5")

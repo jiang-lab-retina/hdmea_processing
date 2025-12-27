@@ -399,32 +399,127 @@ class AnalysisConfig:
 CONFIG = AnalysisConfig()
 ```
 
+### 8. Use Existing Infrastructure
+
+**Always use the existing `PipelineSession` class and utilities from `hdmea.pipeline`** rather than creating custom session classes. This ensures consistency across all modules and leverages tested, maintained code.
+
+**Required Imports:**
+```python
+from hdmea.pipeline import PipelineSession, create_session
+```
+
+**Loading Existing HDF5:**
+```python
+# Use PipelineSession.load() to restore an existing HDF5 into session
+session = PipelineSession.load(hdf5_path)
+
+# Process the data
+session = my_analysis_function(..., session=session)
+
+# Save back (preserves all existing data)
+session.save(output_path)
+```
+
+**Available Session Methods:**
+| Method | Description |
+|--------|-------------|
+| `PipelineSession.load(path)` | Load existing HDF5 into session |
+| `session.save(path)` | Write session to HDF5 |
+| `session.add_units(units_dict)` | Add/update unit data |
+| `session.add_metadata(meta_dict)` | Add/update metadata |
+| `session.add_feature(unit_id, name, data)` | Add feature to unit |
+| `session.mark_step_complete(name)` | Track completed step |
+
+**Benefits of Using Existing Infrastructure:**
+- Consistent serialization/deserialization across all modules
+- Automatic handling of HDF5 data types
+- Built-in step tracking and warnings
+- Memory estimation utilities
+- Checkpoint/resume support
+
+### 9. HDF5 Data Storage Rules
+
+**All data must be stored as explicit HDF5 datasets, NOT as attributes.**
+
+Attributes have limitations (size, type support) and are less visible in HDF5 viewers. Use datasets for everything:
+
+```python
+# BAD: Using attributes
+group.attrs['value'] = 42
+group.attrs['name'] = "example"
+
+# GOOD: Using datasets
+group.create_dataset('value', data=np.array([42]))
+group.create_dataset('name', data=["example"], dtype=h5py.string_dtype())
+```
+
+**Data Type Guidelines:**
+
+| Python Type | HDF5 Storage |
+|-------------|--------------|
+| `int`, `float` | Dataset with shape `(1,)` |
+| `str` | Dataset with `h5py.string_dtype()` |
+| `np.ndarray` | Dataset with native shape |
+| `list`, `tuple` | Convert to `np.array`, then dataset |
+| `dict` | Create subgroup, recursively store values |
+| `bool` | Dataset with `np.array([value], dtype=bool)` |
+
+**Example - Storing Various Types:**
+```python
+import h5py
+import numpy as np
+
+with h5py.File(path, 'a') as f:
+    group = f.create_group('my_feature')
+    
+    # Scalar values as 1-element arrays
+    group.create_dataset('threshold', data=np.array([0.5]))
+    group.create_dataset('count', data=np.array([42]))
+    
+    # Strings
+    dt = h5py.string_dtype(encoding='utf-8')
+    group.create_dataset('label', data=['rgc'], dtype=dt)
+    
+    # Arrays
+    group.create_dataset('values', data=np.array([1.0, 2.0, 3.0]))
+    
+    # Nested structure via subgroups
+    subgroup = group.create_group('parameters')
+    subgroup.create_dataset('param_a', data=np.array([1.0]))
+    subgroup.create_dataset('param_b', data=np.array([2.0]))
+```
+
 ## Integration with Existing Pipeline
 
 New analysis modules integrate with the existing pipeline by:
 
 1. **Importing from the core module:**
    ```python
-   from hdmea.pipeline import create_session, PipelineSession
+   from hdmea.pipeline import PipelineSession, create_session
    ```
 
-2. **Following the session pattern:**
+2. **Loading existing data with `PipelineSession.load()`:**
    ```python
-   session = create_session(dataset_id="...")
+   session = PipelineSession.load(existing_hdf5_path)
+   ```
+
+3. **Following the session pattern:**
+   ```python
+   session = PipelineSession.load(hdf5_path)  # or create_session()
    session = existing_step(..., session=session)
    session = new_analysis(..., session=session)  # New step
-   session.save()
+   session.save(output_path)
    ```
 
-3. **Using consistent HDF5 paths:**
+4. **Using consistent HDF5 paths:**
    - Units: `units/{unit_id}/`
    - Features: `units/{unit_id}/features/{feature_name}/`
    - Metadata: `metadata/`
    - Stimulus: `stimulus/`
 
-4. **Tracking completed steps:**
+5. **Tracking completed steps:**
    ```python
-   session.completed_steps.add('step_name')
+   session.mark_step_complete('step_name')
    ```
 
 ## File Organization
@@ -452,16 +547,17 @@ Projects/
 | Batch processing | Skip existing, log progress, handle errors gracefully |
 | Structured output | Hierarchical groups with individual datasets |
 | Configuration | Module-level constants and dataclasses |
-| Integration | Follow HDF5 path conventions, track completed steps |
+| Use existing infrastructure | Import `PipelineSession` from `hdmea.pipeline`, use `load()`/`save()` |
+| No HDF5 attributes | Store all data as datasets, never as attributes |
 
 ## Checklist for New Analysis Modules
 
+- [ ] Import `PipelineSession` from `hdmea.pipeline` (do not create custom session class)
+- [ ] Use `PipelineSession.load()` for loading existing HDF5 data
+- [ ] Use `session.save()` for writing data (preserves existing data)
 - [ ] Create core analysis function with `session` parameter
-- [ ] Implement `load_hdf5_to_session()` for loading existing data
-- [ ] Implement `save_results_to_hdf5()` that preserves existing data
+- [ ] Use `session.mark_step_complete()` to track steps
+- [ ] Store all data as HDF5 datasets (not attributes)
 - [ ] Create batch processing script with progress tracking
 - [ ] Add processing log generation
-- [ ] Write README documentation
 - [ ] Follow consistent HDF5 path structure
-- [ ] Track completed steps in session
-

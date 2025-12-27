@@ -163,31 +163,29 @@ def _write_array_dataset(group: h5py.Group, name: str, value: np.ndarray) -> Non
 def write_ap_tracking_to_hdf5(
     root: h5py.File,
     unit_id: str,
-    dvnt: DVNTPosition,
     refined_soma: Optional[RefinedSoma],
     ais: Optional[AxonInitialSegment],
     prediction_data: Optional[np.ndarray],
     post_processed: Optional[Dict],
     ap_pathway: Optional[APPathway],
-    intersection: Optional[APIntersection],
     polar_coords: Optional[SomaPolarCoordinates],
-    onh_result: Optional[ONHResult] = None,
 ) -> None:
     """
-    Write AP tracking results to HDF5 as explicit datasets.
+    Write per-unit AP tracking results to HDF5 as explicit datasets.
 
     All values are stored as datasets, not attributes, per design decision D6.
+    
+    Note: Retina-level data (DVNT, ONH intersection) is written separately
+    to metadata/ap_tracking/ by write_ap_tracking_metadata_to_hdf5().
 
     Args:
         root: Open HDF5 file handle
         unit_id: Unit identifier
-        dvnt: DVNT position data
         refined_soma: Refined soma position
         ais: Axon initial segment position
         prediction_data: CNN prediction array
         post_processed: Post-processing results dict
         ap_pathway: Fitted AP pathway
-        intersection: Optimal intersection point
         polar_coords: Soma polar coordinates
     """
     features_path = f"units/{unit_id}/features"
@@ -204,11 +202,6 @@ def write_ap_tracking_to_hdf5(
 
     # Create ap_tracking group
     ap_group = features_group.create_group("ap_tracking")
-
-    # Write DVNT positions
-    _write_scalar_dataset(ap_group, "DV_position", dvnt.dv_position)
-    _write_scalar_dataset(ap_group, "NT_position", dvnt.nt_position)
-    _write_scalar_dataset(ap_group, "LR_position", dvnt.lr_position)
 
     # Write refined soma
     soma_group = ap_group.create_group("refined_soma")
@@ -262,39 +255,6 @@ def write_ap_tracking_to_hdf5(
         for key in ["slope", "intercept", "r_value", "p_value", "std_err"]:
             _write_scalar_dataset(pathway_group, key, None)
 
-    # Write intersection (enhanced ONH result takes precedence)
-    int_group = ap_group.create_group("all_ap_intersection")
-    if onh_result:
-        # Enhanced intersection with clustering
-        _write_scalar_dataset(int_group, "x", onh_result.x)
-        _write_scalar_dataset(int_group, "y", onh_result.y)
-        _write_scalar_dataset(int_group, "mse", onh_result.mse)
-        _write_scalar_dataset(int_group, "rmse", onh_result.rmse)
-        _write_scalar_dataset(int_group, "n_cluster_points", onh_result.n_cluster_points)
-        _write_scalar_dataset(int_group, "n_total_intersections", onh_result.n_total_intersections)
-        _write_scalar_dataset(int_group, "n_valid_after_direction", onh_result.n_valid_after_direction)
-        _write_scalar_dataset(int_group, "consensus_direction", onh_result.consensus_direction)
-        _write_scalar_dataset(int_group, "r2_threshold", onh_result.r2_threshold)
-        _write_scalar_dataset(int_group, "direction_tolerance", onh_result.direction_tolerance)
-        _write_scalar_dataset(int_group, "cluster_eps", onh_result.cluster_eps)
-        _write_scalar_dataset(int_group, "cluster_min_samples", onh_result.cluster_min_samples)
-        _write_scalar_dataset(int_group, "method", onh_result.method)
-        # Save cluster points array
-        if onh_result.cluster_points is not None and len(onh_result.cluster_points) > 0:
-            _write_array_dataset(int_group, "cluster_points", onh_result.cluster_points)
-    elif intersection:
-        # Legacy intersection (fallback)
-        _write_scalar_dataset(int_group, "x", intersection.x)
-        _write_scalar_dataset(int_group, "y", intersection.y)
-        _write_scalar_dataset(int_group, "mse", intersection.mse)
-        _write_scalar_dataset(int_group, "method", "legacy_weighted_mean")
-        _write_scalar_dataset(int_group, "r2_threshold", 0.0)  # Legacy doesn't filter by R²
-    else:
-        _write_scalar_dataset(int_group, "x", None)
-        _write_scalar_dataset(int_group, "y", None)
-        _write_scalar_dataset(int_group, "method", None)
-        _write_scalar_dataset(int_group, "r2_threshold", None)
-
     # Write polar coordinates (legacy method with angle correction)
     polar_group = ap_group.create_group("soma_polar_coordinates")
     if polar_coords:
@@ -331,12 +291,114 @@ def write_ap_tracking_to_hdf5(
         ]:
             _write_scalar_dataset(polar_group, key, None)
 
-    # Add metadata
-    now = datetime.now(timezone.utc).isoformat()
-    _write_scalar_dataset(ap_group, "_processed_at", now)
-    _write_scalar_dataset(ap_group, "_version", "1.0.0")
-
     logger.debug(f"Wrote ap_tracking for unit {unit_id}")
+
+
+def write_ap_tracking_metadata_to_hdf5(
+    root: h5py.File,
+    dvnt: DVNTPosition,
+    onh_result: Optional[ONHResult],
+    intersection: Optional[APIntersection],
+    processed_at: str,
+) -> None:
+    """
+    Write retina-level AP tracking metadata to HDF5.
+    
+    This stores shared data (DVNT position, ONH intersection, processing timestamp)
+    in metadata/ap_tracking/ rather than per-unit, since these are retina properties.
+
+    Args:
+        root: Open HDF5 file handle
+        dvnt: DVNT position data (from Center_xy metadata)
+        onh_result: Enhanced ONH result with clustering (preferred)
+        intersection: Legacy APIntersection (fallback if onh_result is None)
+        processed_at: ISO timestamp of when processing started
+    """
+    # Ensure metadata group exists
+    if "metadata" not in root:
+        root.create_group("metadata")
+    
+    metadata_group = root["metadata"]
+    
+    # Delete existing ap_tracking group if present (always overwrite)
+    if "ap_tracking" in metadata_group:
+        del metadata_group["ap_tracking"]
+    
+    # Create ap_tracking group
+    ap_meta = metadata_group.create_group("ap_tracking")
+    
+    # Write DVNT positions
+    _write_scalar_dataset(ap_meta, "DV_position", dvnt.dv_position)
+    _write_scalar_dataset(ap_meta, "NT_position", dvnt.nt_position)
+    _write_scalar_dataset(ap_meta, "LR_position", dvnt.lr_position)
+    
+    # Write processing timestamp
+    _write_scalar_dataset(ap_meta, "_processed_at", processed_at)
+    
+    # Write intersection (enhanced ONH result takes precedence)
+    int_group = ap_meta.create_group("all_ap_intersection")
+    if onh_result:
+        # Core intersection data
+        _write_scalar_dataset(int_group, "x", onh_result.x)
+        _write_scalar_dataset(int_group, "y", onh_result.y)
+        _write_scalar_dataset(int_group, "mse", onh_result.mse)
+        _write_scalar_dataset(int_group, "rmse", onh_result.rmse)
+        _write_scalar_dataset(int_group, "method", onh_result.method)
+        
+        # Algorithm parameters
+        _write_scalar_dataset(int_group, "r2_threshold", onh_result.r2_threshold)
+        _write_scalar_dataset(int_group, "direction_tolerance", onh_result.direction_tolerance)
+        _write_scalar_dataset(int_group, "consensus_direction", onh_result.consensus_direction)
+        _write_scalar_dataset(int_group, "n_valid_after_direction", onh_result.n_valid_after_direction)
+        
+        # New global optimization algorithm fields
+        _write_scalar_dataset(int_group, "centroid_exclude_fraction", onh_result.centroid_exclude_fraction)
+        _write_scalar_dataset(int_group, "n_cells_used", onh_result.n_cells_used)
+        _write_scalar_dataset(int_group, "n_centroids_used", onh_result.n_centroids_used)
+        _write_scalar_dataset(int_group, "total_squared_error", onh_result.total_squared_error)
+        
+        # Legacy clustering algorithm fields (may be 0 for new algorithm)
+        _write_scalar_dataset(int_group, "n_cluster_points", onh_result.n_cluster_points)
+        _write_scalar_dataset(int_group, "n_total_intersections", onh_result.n_total_intersections)
+        _write_scalar_dataset(int_group, "cluster_eps", onh_result.cluster_eps)
+        _write_scalar_dataset(int_group, "cluster_min_samples", onh_result.cluster_min_samples)
+        _write_scalar_dataset(int_group, "max_distance_from_center", onh_result.max_distance_from_center)
+        
+        # Outlier removal fields (two-stage)
+        _write_scalar_dataset(int_group, "max_outlier_fraction", onh_result.max_outlier_fraction)
+        if onh_result.outlier_unit_ids_stage1 is not None and len(onh_result.outlier_unit_ids_stage1) > 0:
+            # Stage 1 outliers (removed before intersection filter)
+            outlier_ids_s1 = np.array(onh_result.outlier_unit_ids_stage1, dtype="S")
+            int_group.create_dataset("outlier_unit_ids_stage1", data=outlier_ids_s1)
+        if onh_result.outlier_unit_ids_stage2 is not None and len(onh_result.outlier_unit_ids_stage2) > 0:
+            # Stage 2 outliers (removed during final optimization)
+            outlier_ids_s2 = np.array(onh_result.outlier_unit_ids_stage2, dtype="S")
+            int_group.create_dataset("outlier_unit_ids_stage2", data=outlier_ids_s2)
+        if onh_result.outlier_unit_ids is not None and len(onh_result.outlier_unit_ids) > 0:
+            # All outliers combined (stage1 + stage2)
+            outlier_ids = np.array(onh_result.outlier_unit_ids, dtype="S")
+            int_group.create_dataset("outlier_unit_ids", data=outlier_ids)
+        if onh_result.kept_unit_ids is not None and len(onh_result.kept_unit_ids) > 0:
+            kept_ids = np.array(onh_result.kept_unit_ids, dtype="S")
+            int_group.create_dataset("kept_unit_ids", data=kept_ids)
+        
+        # Save cluster points array (legacy method only)
+        if onh_result.cluster_points is not None and len(onh_result.cluster_points) > 0:
+            _write_array_dataset(int_group, "cluster_points", onh_result.cluster_points)
+    elif intersection:
+        # Legacy intersection (fallback)
+        _write_scalar_dataset(int_group, "x", intersection.x)
+        _write_scalar_dataset(int_group, "y", intersection.y)
+        _write_scalar_dataset(int_group, "mse", intersection.mse)
+        _write_scalar_dataset(int_group, "method", "legacy_weighted_mean")
+        _write_scalar_dataset(int_group, "r2_threshold", 0.0)  # Legacy doesn't filter by R²
+    else:
+        _write_scalar_dataset(int_group, "x", None)
+        _write_scalar_dataset(int_group, "y", None)
+        _write_scalar_dataset(int_group, "method", None)
+        _write_scalar_dataset(int_group, "r2_threshold", None)
+    
+    logger.debug("Wrote ap_tracking metadata to metadata/ap_tracking/")
 
 
 # =============================================================================
@@ -454,6 +516,79 @@ def process_single_unit(
     return result
 
 
+def process_single_unit_minimal(
+    root: h5py.File,
+    unit_id: str,
+    # Soma/AIS parameters
+    soma_std_threshold: float = 3.0,
+    soma_temporal_range: Tuple[int, int] = (5, 27),
+    soma_refine_radius: int = 5,
+    ais_search_xy_radius: int = 5,
+    ais_search_t_radius: int = 5,
+) -> Dict[str, Any]:
+    """
+    Process a single unit for soma and AIS only (no CNN, no axon tracking).
+    
+    This is a lightweight version of process_single_unit used for non-RGC cells
+    that only need soma position and polar coordinates calculated using the
+    ONH derived from RGC cells.
+
+    Args:
+        root: Open HDF5 file handle
+        unit_id: Unit identifier
+        soma_std_threshold: STD threshold for soma detection
+        soma_temporal_range: Temporal range for soma detection
+        soma_refine_radius: Radius for soma refinement
+        ais_search_xy_radius: XY search radius for AIS detection
+        ais_search_t_radius: Temporal search radius for AIS detection
+
+    Returns:
+        Dictionary with refined_soma and ais results only
+    """
+    result = {
+        "unit_id": unit_id,
+        "status": "skipped",
+        "refined_soma": None,
+        "ais": None,
+    }
+
+    # Read STA data
+    sta_data = read_sta_data(root, unit_id)
+    if sta_data is None:
+        result["skip_reason"] = "no_eimage_sta"
+        logger.debug(f"Unit {unit_id}: Skipped (no eimage_sta data)")
+        return result
+
+    # Detect soma
+    try:
+        soma_row, soma_col = find_soma_from_3d_sta(
+            sta_data,
+            std_threshold=soma_std_threshold,
+            sta_temporal_range=soma_temporal_range,
+        )
+    except Exception as e:
+        logger.debug(f"Unit {unit_id}: Soma detection failed: {e}")
+        result["skip_reason"] = "soma_detection_failed"
+        return result
+
+    # Refine soma
+    refined_soma = soma_refiner(sta_data, (soma_row, soma_col), refine_radius=soma_refine_radius)
+    result["refined_soma"] = refined_soma
+
+    # Detect AIS
+    ais = None
+    if refined_soma:
+        ais = ais_refiner(
+            sta_data, refined_soma,
+            search_xy_radius=ais_search_xy_radius,
+            search_t_radius=ais_search_t_radius,
+        )
+    result["ais"] = ais
+
+    result["status"] = "complete"
+    return result
+
+
 # =============================================================================
 # Main Entry Points
 # =============================================================================
@@ -493,6 +628,8 @@ def compute_ap_tracking(
     center_point: Tuple[float, float] = DEFAULT_CENTER_POINT,
     cluster_eps: float = DEFAULT_CLUSTER_EPS,
     cluster_min_samples: int = DEFAULT_CLUSTER_MIN_SAMPLES,
+    centroid_exclude_fraction: float = 0.1,  # Exclude first 10% of centroids for ONH
+    min_remaining_fraction: float = 0.2,  # Stop refinement if < 20% of pathways remain
 ) -> Optional[Any]:
     """
     Compute AP tracking features for all units in an HDF5 file.
@@ -540,6 +677,9 @@ def compute_ap_tracking(
         raise FileNotFoundError(f"Model file not found: {model_path}")
 
     logger.info(f"Starting AP tracking for {hdf5_path}")
+    
+    # Record processing start time for metadata
+    processing_start_time = datetime.now(timezone.utc).isoformat()
 
     # Select device and load model
     device = select_device(force_cpu=force_cpu)
@@ -593,6 +733,7 @@ def compute_ap_tracking(
         # Process each unit and collect results
         all_results = {}
         all_pathways = {}
+        non_rgc_results = {}  # Will be populated in second pass for non-RGC cells
 
         for unit_id in unit_ids:
             logger.info(f"Processing unit {unit_id}")
@@ -630,37 +771,55 @@ def compute_ap_tracking(
                 
                 all_pathways[unit_id] = ap_pathway
 
-        # Calculate enhanced ONH intersection using clustering
+        # Collect all centroids for the new global optimization ONH algorithm
+        all_centroids = {}
+        for unit_id, result in all_results.items():
+            if result["post_processed"] and "axon_centroids" in result["post_processed"]:
+                centroids = result["post_processed"]["axon_centroids"]
+                if centroids is not None and len(centroids) > 0:
+                    all_centroids[unit_id] = centroids
+
+        # Calculate enhanced ONH intersection using global optimization
         onh_result = None
         intersection = None
         used_method = None
         actual_r2_threshold = r2_threshold
         
         if len(all_pathways) >= 2:
-            logger.info(f"Calculating ONH from {len(all_pathways)} pathways...")
+            logger.info(f"Calculating ONH from {len(all_pathways)} pathways, {len(all_centroids)} cells with centroids...")
             
             # Try enhanced algorithm with progressively lower R² thresholds
             current_r2 = r2_threshold
             while current_r2 >= 0.4 and onh_result is None:
-                logger.info(f"Trying enhanced ONH detection with R²≥{current_r2:.1f}...")
+                logger.info(f"Trying ONH detection with R²≥{current_r2:.1f}...")
                 onh_result = calculate_enhanced_intersection(
                     all_pathways,
+                    all_centroids=all_centroids,  # Pass centroids for new algorithm
                     r2_threshold=current_r2,
                     direction_tolerance=direction_tolerance,
                     max_distance_from_center=max_distance_from_center,
                     center_point=center_point,
                     cluster_eps=cluster_eps,
                     cluster_min_samples=cluster_min_samples,
+                    centroid_exclude_fraction=centroid_exclude_fraction,
+                    min_remaining_fraction=min_remaining_fraction,
                 )
                 
                 if onh_result:
                     actual_r2_threshold = current_r2
-                    used_method = "enhanced"
-                    logger.info(
-                        f"ONH detected at ({onh_result.x:.2f}, {onh_result.y:.2f}), "
-                        f"RMSE={onh_result.rmse:.2f}, R²≥{current_r2:.1f}, "
-                        f"cluster={onh_result.n_cluster_points}/{onh_result.n_total_intersections} points"
-                    )
+                    used_method = onh_result.method
+                    if onh_result.method == "global_optimization":
+                        logger.info(
+                            f"ONH detected at ({onh_result.x:.2f}, {onh_result.y:.2f}), "
+                            f"RMSE={onh_result.rmse:.2f}, R²≥{current_r2:.1f}, "
+                            f"cells={onh_result.n_cells_used}, centroids={onh_result.n_centroids_used}"
+                        )
+                    else:
+                        logger.info(
+                            f"ONH detected at ({onh_result.x:.2f}, {onh_result.y:.2f}), "
+                            f"RMSE={onh_result.rmse:.2f}, R²≥{current_r2:.1f}, "
+                            f"cluster={onh_result.n_cluster_points}/{onh_result.n_total_intersections} points"
+                        )
                     # Create APIntersection for backward compatibility
                     intersection = APIntersection(
                         x=onh_result.x, y=onh_result.y, mse=onh_result.mse
@@ -710,20 +869,73 @@ def compute_ap_tracking(
 
             write_ap_tracking_to_hdf5(
                 root, unit_id,
-                dvnt=dvnt,
                 refined_soma=result["refined_soma"],
                 ais=result["ais"],
                 prediction_data=result["prediction"],
                 post_processed=result["post_processed"],
                 ap_pathway=result["ap_pathway"],
-                intersection=intersection,
                 polar_coords=polar_coords,
-                onh_result=onh_result,
             )
+
+        # Write retina-level metadata (DVNT, ONH, timestamp) once after all units
+        write_ap_tracking_metadata_to_hdf5(
+            root,
+            dvnt=dvnt,
+            onh_result=onh_result,
+            intersection=intersection,
+            processed_at=processing_start_time,
+        )
+
+        # Second pass: Process non-RGC cells for soma, AIS, and polar coordinates only
+        # Uses the ONH derived from RGC cells
+        if filter_by_cell_type and intersection:
+            non_rgc_unit_ids = [uid for uid in all_unit_ids if uid not in unit_ids]
+            
+            if non_rgc_unit_ids:
+                logger.info(f"Processing {len(non_rgc_unit_ids)} non-RGC cells for soma/polar coordinates...")
+                
+                for unit_id in non_rgc_unit_ids:
+                    result = process_single_unit_minimal(
+                        root, unit_id,
+                        soma_std_threshold=soma_std_threshold,
+                        soma_temporal_range=soma_temporal_range,
+                        soma_refine_radius=soma_refine_radius,
+                        ais_search_xy_radius=ais_search_xy_radius,
+                        ais_search_t_radius=ais_search_t_radius,
+                    )
+                    
+                    non_rgc_results[unit_id] = result
+                    
+                    # Calculate polar coordinates if we have soma
+                    polar_coords = None
+                    if result["refined_soma"]:
+                        soma_xy = (result["refined_soma"].x, result["refined_soma"].y)
+                        polar_coords = calculate_soma_polar_coordinates(
+                            soma_xy, intersection,
+                            dv_position=dvnt.dv_position,
+                            nt_position=dvnt.nt_position,
+                            angle_correction=angle_correction,
+                        )
+                    
+                    # Write to HDF5 (no prediction, post_processed, or ap_pathway)
+                    if result["refined_soma"]:
+                        write_ap_tracking_to_hdf5(
+                            root, unit_id,
+                            refined_soma=result["refined_soma"],
+                            ais=result["ais"],
+                            prediction_data=None,
+                            post_processed=None,
+                            ap_pathway=None,
+                            polar_coords=polar_coords,
+                        )
+                
+                non_rgc_complete = sum(1 for r in non_rgc_results.values() if r["status"] == "complete")
+                logger.info(f"Non-RGC processing complete: {non_rgc_complete}/{len(non_rgc_unit_ids)} cells")
 
     # Count successes
     complete_count = sum(1 for r in all_results.values() if r["status"] == "complete")
-    logger.info(f"AP tracking complete: {complete_count}/{len(unit_ids)} units processed")
+    non_rgc_count = sum(1 for r in non_rgc_results.values() if r["status"] == "complete")
+    logger.info(f"AP tracking complete: {complete_count} RGCs + {non_rgc_count} non-RGCs processed")
 
     # TODO: Session support (T029-T032) - for now return None
     if session is not None:

@@ -51,6 +51,9 @@ viz = [
     "streamlit>=1.28.0",
     "plotly>=5.18.0",
 ]
+ap_tracking = [
+    "torch>=2.0.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/jianglab/hdmea"

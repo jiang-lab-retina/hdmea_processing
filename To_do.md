@@ -1,0 +1,2 @@
+[ ] do not use CLI, let me define the parameters in the python file
+[ ] use the metadata/gsheet_row/Bad_lanes to replace the bad lanes with mean of the whole sta data. The lane number indicate the columns (x) of the sta data, counting start from 1

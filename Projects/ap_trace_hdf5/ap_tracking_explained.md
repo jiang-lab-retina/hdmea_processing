@@ -7,8 +7,8 @@ The AP (Action Potential) Tracking pipeline analyzes retinal ganglion cell (RGC)
 2. Predict axon signal probability using CNN
 3. Extract axon trajectory centroids
 4. Fit pathway lines to axon trajectories  
-5. Calculate the Optic Nerve Head (ONH) location from pathway intersections
-6. Compute soma polar coordinates relative to ONH
+5. Calculate the Optic Nerve Head (ONH) location using constrained optimization
+6. Compute soma polar coordinates relative to ONH for ALL cells (including non-RGCs)
 
 ---
 
@@ -22,27 +22,19 @@ The AP (Action Potential) Tracking pipeline analyzes retinal ganglion cell (RGC)
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                 1. SOMA DETECTION                                │
-│   • Find max intensity region in temporal range [5, 27]         │
-│   • Refine soma position with Gaussian weighting                │
+│              FIRST PASS: RGC CELLS ONLY                         │
 └─────────────────────────────────────────────────────────────────┘
                               │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                 2. CNN PREDICTION                                │
-│   • Run 3D CNN on STA data (50, 65, 65)                        │
-│   • Output: probability map of axon signal per pixel/frame      │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                 3. POST-PROCESSING                               │
-│   • Threshold filtering (>0.1)                                  │
-│   • Connected component analysis (min 3 pixels)                 │
-│   • Temporal consistency smoothing                              │
-│   • Soma exclusion (5px radius)                                 │
-│   • Centroid extraction with trajectory segment detection       │
-└─────────────────────────────────────────────────────────────────┘
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│ 1. SOMA DETECTION│ │ 2. CNN PREDICTION│ │ 3. POST-PROCESS  │
+│ • Temporal range │ │ • 3D convolutions│ │ • Noise filter   │
+│ • Gaussian refine│ │ • Probability map│ │ • Soma exclusion │
+│ • AIS detection  │ │                  │ │ • Centroid extract│
+└──────────────────┘ └──────────────────┘ └──────────────────┘
+          │                   │                   │
+          └───────────────────┴───────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -54,22 +46,25 @@ The AP (Action Potential) Tracking pipeline analyzes retinal ganglion cell (RGC)
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                 5. ONH DETECTION                                 │
-│   • Enhanced algorithm with clustering (primary)                │
-│   • Legacy weighted mean (fallback)                             │
+│                 5. ONH DETECTION (Iterative Refinement)         │
+│   • Global optimization: minimize perpendicular distance        │
+│   • Direction constraint: ONH in forward direction              │
+│   • Distance constraint: within 98px of center                  │
+│   • Iterative pathway elimination                               │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                 6. POLAR COORDINATES                             │
-│   • Compute soma position relative to ONH                       │
-│   • Apply anatomical angle correction                           │
+│              SECOND PASS: NON-RGC CELLS                         │
+│   • Soma/AIS detection only (no CNN)                            │
+│   • Polar coordinates using ONH from RGCs                       │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    OUTPUT: HDF5 File                            │
-│            (units/{id}/features/ap_tracking/...)                │
+│   • metadata/ap_tracking/ (retina-level: ONH, DVNT)             │
+│   • units/{id}/features/ap_tracking/ (per-cell data)            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -147,132 +142,224 @@ slope, intercept, r_value, p_value, std_err = linregress(cols, rows)
 
 ---
 
-## ONH Detection: Enhanced vs Legacy Algorithm
+## ONH Detection: Iterative Refinement Algorithm
 
-### Enhanced Algorithm (Primary Method)
+### Overview
 
-The enhanced algorithm uses a 5-step pipeline with robust outlier rejection:
+The current ONH detection uses **global optimization with iterative refinement**. This approach:
+1. Finds the ONH that minimizes perpendicular distance from all centroids
+2. Iteratively removes pathways that push the ONH outside the valid boundary
+3. Uses direction and distance constraints to ensure physically plausible results
+
+### Algorithm Steps
 
 ```
-Step 1: Calculate Consensus Direction
+Step 1: Filter Pathways by R² and Direction
         ↓
-Step 2: Filter by Direction (±45° tolerance)
+Step 2: Exclude First 10% of Centroids
         ↓
-Step 3: Calculate Pairwise Intersections with Distance Filter
+Step 3: Global Optimization with Constraints
         ↓
-Step 4: DBSCAN Clustering
+Step 4: Iterative Pathway Elimination (if needed)
         ↓
-Step 5: Weighted Mean from Main Cluster
+Step 5: Return ONH with ≥5 Pathways Remaining
 ```
 
-#### Step 1: Consensus Direction
-
-Calculate the dominant direction all axons are pointing:
+### Step 1: Initial Filtering
 
 ```python
-# Weighted circular mean of all pathway directions
-# Weights = R² of each pathway
-# Result: consensus angle in degrees [0-360]
+# R² Filter: Keep pathways with R² ≥ 0.8
+valid_pathways = [p for p in pathways if p.r_squared >= r2_threshold]
+
+# Direction Filter: Calculate consensus direction
+# - Weighted circular mean of all pathway directions (weights = R²)
+# - Remove pathways with direction > 45° from consensus
+consensus = weighted_circular_mean(directions, weights=r2_values)
+valid_pathways = [p for p in valid_pathways 
+                  if angle_difference(p.direction, consensus) <= 45°]
 ```
 
-This represents the approximate direction toward the ONH from the MEA center.
-
-#### Step 2: Direction Filtering
-
-Remove pathways pointing away from the consensus:
+### Step 2: Centroid Preprocessing
 
 ```python
-# For each pathway with direction_angle:
-#   angle_diff = abs(direction_angle - consensus_direction)
-#   if angle_diff > 180: angle_diff = 360 - angle_diff
-#   
-#   if angle_diff > 45°:
-#       pathway.direction_valid = False  # Exclude from ONH calculation
+# For each cell, exclude the first 10% of centroids
+# Rationale: Initial centroids near soma are less reliable for projection
+n_exclude = int(len(centroids) * 0.1)
+remaining_centroids = centroids[n_exclude:]
+
+# The new "start point" for projection = first remaining centroid
+start_point = remaining_centroids[0]
 ```
 
-**Rationale**: All RGC axons should point toward the ONH. Pathways pointing opposite directions are likely errors.
+### Step 3: Global Optimization
 
-#### Step 3: Pairwise Intersections
-
-Calculate where each pair of pathway lines intersect:
+The ONH is found by minimizing a loss function with scipy:
 
 ```python
-# For each pair of pathways (line1, line2):
-#   Solve: y = m1*x + c1 = m2*x + c2
-#   x_int = (c2 - c1) / (m1 - m2)
-#   y_int = m1 * x_int + c1
+# Loss Function:
+# L(ONH) = Σ (perpendicular_distance(centroid_i, line(ONH → start_point_i)))²
 #
-#   # Distance filter: intersection must be within visible area
-#   dist = sqrt((x_int - 33)² + (y_int - 33)²)
-#   if dist > 98: exclude  # 65 + 33 = 98 pixels from center
+# For each cell with start_point and centroids:
+#   - Define a line from ONH to start_point
+#   - Calculate perpendicular distance from each centroid to this line
+#   - Sum squared distances across all cells and centroids
+
+def loss_function(onh_candidate):
+    total_error = 0
+    for start_point, centroids in cell_data:
+        for centroid in centroids:
+            dist = perpendicular_distance(centroid, onh_candidate, start_point)
+            total_error += dist ** 2
+    return total_error
 ```
 
-#### Step 4: DBSCAN Clustering
+**Constraints** (enforced via scipy SLSQP):
 
-Identify the main cluster of intersection points:
+1. **Distance Constraint**: ONH must be within 98 pixels of chip center (33, 33)
+   ```python
+   constraint_1: (onh_x - 33)² + (onh_y - 33)² <= 98²
+   ```
+
+2. **Direction Constraint**: ONH must be in the forward direction from cells
+   ```python
+   # Vector from mean_start_point to ONH
+   to_onh = (onh - mean_start_point)
+   
+   # Consensus direction unit vector
+   consensus_vec = (cos(consensus_angle), sin(consensus_angle))
+   
+   constraint_2: dot(to_onh, consensus_vec) >= 0
+   ```
+
+### Step 4: Iterative Pathway Elimination with Escalating Removal
+
+If the optimized ONH is at the boundary (> 95% of max distance), problematic pathways are iteratively removed using an **escalating removal strategy**:
 
 ```python
-# DBSCAN parameters:
-#   eps = 15 pixels (neighborhood radius)
-#   min_samples = 3 points
-#
-# Result: 
-#   main_cluster: Points in largest cluster → used for ONH
-#   outliers: Scattered points → excluded
+current_removal_rate = 0.10  # Start at 10%
+no_progress_count = 0
+
+while distance_to_center(onh) > 0.95 * max_distance:
+    # Stop conditions
+    if len(remaining_pathways) < min_pathways:  # Default: 5
+        break
+    if len(remaining_pathways) < initial_count * min_remaining_fraction:  # Default: 20%
+        break
+    
+    # Calculate per-unit projection error
+    errors = [calculate_unit_projection_error(onh, pathway) for pathway in remaining_pathways]
+    
+    # Remove worst-fitting pathways (highest error)
+    n_to_remove = max(1, int(len(remaining_pathways) * current_removal_rate))
+    worst_pathways = get_worst_n(pathways, errors, n_to_remove)
+    remaining_pathways.remove_all(worst_pathways)
+    
+    # Re-optimize with remaining pathways
+    onh = optimize(remaining_pathways)
+    
+    # Check for progress
+    if distance_improvement < 0.5:  # Less than 0.5px improvement
+        no_progress_count += 1
+    else:
+        no_progress_count = 0
+        current_removal_rate = 0.10  # Reset on progress
+    
+    # Escalate removal rate if stuck
+    if no_progress_count >= 3:
+        if current_removal_rate < 0.20:
+            current_removal_rate = 0.20  # Jump to 20%
+        else:
+            current_removal_rate = min(current_removal_rate + 0.10, 0.50)  # +10%, max 50%
+        no_progress_count = 0
 ```
 
-**Rationale**: True pairwise intersections should cluster around the real ONH. Outliers from bad fits are spatially scattered.
+**Escalation Strategy**:
+| Condition | Action |
+|-----------|--------|
+| Making progress | Use 10% removal rate |
+| No progress for 3 iterations | Escalate to 20% |
+| Still stuck for 3 more iterations | Escalate to 30% |
+| Continue pattern | +10% each time, max 50% |
+| Progress resumes | Reset to 10% |
 
-#### Step 5: Weighted Mean from Cluster
+**Stop Conditions**:
+1. ONH converges within boundary (< 95% of max distance) ✓ Success
+2. Fewer than `min_pathways` (5) remain
+3. Fewer than `min_remaining_fraction` (20%) of original pathways remain
 
-Final ONH location from main cluster:
+**Per-Unit Error Calculation**:
+```python
+# Calculate mean squared perpendicular distance for a single pathway
+
+def calculate_unit_projection_error(onh, start_point, centroids):
+    total_error = 0
+    for centroid in centroids:
+        dist = perpendicular_distance(centroid, line(onh, start_point))
+        total_error += dist ** 2
+    return total_error / len(centroids)  # Mean squared error
+```
+
+### Error Metric
+
+The final RMSE (Root Mean Squared Error) is calculated:
 
 ```python
-# Weight each intersection by mean R² of its two source pathways
-x_onh = Σ(x_i × w_i) / Σ(w_i)
-y_onh = Σ(y_i × w_i) / Σ(w_i)
-
-# Calculate RMSE (error metric)
-rmse = sqrt(mean(distance² from each point to weighted mean))
+rmse = sqrt(total_squared_error / n_centroids)
 ```
 
-### Legacy Algorithm (Fallback Method)
-
-Simple weighted average without any filtering:
-
-```python
-# Calculate ALL pairwise intersections (no direction/distance filtering)
-# Weight by mean R² of each pair
-# Compute weighted average
-
-x_onh = Σ(x_i × r²_mean_i) / Σ(r²_mean_i)
-y_onh = Σ(y_i × r²_mean_i) / Σ(r²_mean_i)
-```
-
-**Limitation**: No outlier rejection. A single bad pathway can skew the result significantly.
+Lower RMSE indicates better fit (all centroids align well with projections to ONH).
 
 ---
 
-## Comparison: Enhanced vs Legacy
+## Second Pass: Non-RGC Cell Processing
 
-| Feature | Enhanced Algorithm | Legacy Algorithm |
-|---------|-------------------|------------------|
-| **R² Filtering** | Yes (≥0.8, with retry at 0.6, 0.4) | No |
+After the ONH is determined from RGC cells, **all non-RGC cells** (AC, unknown, other) are processed:
+
+```python
+# For each non-RGC cell:
+#   1. Detect soma from STA (same algorithm as RGC)
+#   2. Detect AIS
+#   3. Calculate polar coordinates using ONH from RGCs
+#   4. Write to HDF5 (without CNN prediction or pathway data)
+```
+
+This ensures all cells have:
+- `refined_soma/` - Soma position
+- `axon_initial_segment/` - AIS position  
+- `soma_polar_coordinates/` - Position relative to ONH
+
+But non-RGC cells do NOT have:
+- `prediction_sta_data` - CNN output
+- `post_processed_data/` - Filtered predictions and centroids
+- `ap_pathway/` - Fitted pathway line
+
+---
+
+## Comparison: Iterative Refinement vs Legacy
+
+| Feature | Iterative Refinement (Current) | Legacy Algorithm |
+|---------|-------------------------------|------------------|
+| **Method** | Global optimization | Pairwise intersections |
+| **Loss Function** | Sum of squared perpendicular distances | N/A (geometric) |
+| **R² Filtering** | Yes (≥0.8, retry at 0.6, 0.4) | No |
 | **Direction Filtering** | Yes (±45° from consensus) | No |
-| **Distance Filtering** | Yes (98px from center) | No |
-| **Outlier Rejection** | DBSCAN clustering | None |
-| **Robustness** | High | Low |
-| **Failure Mode** | Falls back to legacy | Returns noisy result |
+| **Distance Constraint** | Enforced in optimizer (≤98px) | Post-hoc filter |
+| **Direction Constraint** | Enforced in optimizer | None |
+| **Outlier Rejection** | Escalating removal (10%→20%→30%...) | DBSCAN clustering |
+| **Removal Strategy** | Error-based batch removal | N/A |
+| **Minimum Pathways** | 5 or 20% of original | 2 required |
+| **Robustness** | Very high | Moderate |
+| **Output Field** | `method: "iterative_refinement"` | `method: "legacy_weighted_mean"` |
 
 ### Retry Logic
 
-The enhanced algorithm attempts progressively lower R² thresholds:
+The algorithm attempts progressively lower R² thresholds:
 
 ```
 Try R² ≥ 0.8 → If fail...
 Try R² ≥ 0.6 → If fail...
 Try R² ≥ 0.4 → If fail...
-Use legacy method (R² = 0.0, no filtering)
+Use legacy method (pairwise intersection clustering)
 ```
 
 The actual R² threshold that succeeded is recorded in the HDF5 output.
@@ -281,13 +368,39 @@ The actual R² threshold that succeeded is recorded in the HDF5 output.
 
 ## Output Data Structure
 
-Results are stored in HDF5 at `units/{unit_id}/features/ap_tracking/`:
+### Retina-Level Data (shared by all cells)
+
+Stored at `metadata/ap_tracking/`:
 
 ```
+metadata/ap_tracking/
+├── DV_position           # Dorso-Ventral position from Center_xy
+├── NT_position           # Naso-Temporal position from Center_xy
+├── LR_position           # Left/Right eye ("L" or "R")
+├── _processed_at         # ISO timestamp of processing
+└── all_ap_intersection/
+    ├── x                 # ONH x coordinate (column)
+    ├── y                 # ONH y coordinate (row)
+    ├── mse               # Mean squared error
+    ├── rmse              # Root mean squared error
+    ├── method            # "iterative_refinement" or "legacy_weighted_mean"
+    ├── r2_threshold      # Actual R² threshold used
+    ├── consensus_direction  # Degrees [0-360]
+    ├── n_cells_used      # Number of cells in final optimization
+    ├── n_centroids_used  # Total centroids used
+    ├── centroid_exclude_fraction  # Fraction excluded (0.1 = 10%)
+    ├── max_distance_from_center   # Maximum allowed distance (98)
+    ├── outlier_unit_ids  # Unit IDs removed for boundary compliance
+    └── kept_unit_ids     # Unit IDs kept in final optimization
+```
+
+### Per-Cell Data
+
+Stored at `units/{unit_id}/features/ap_tracking/`:
+
+**For RGC cells:**
+```
 ap_tracking/
-├── DV_position          # Dorso-Ventral position from metadata
-├── NT_position          # Naso-Temporal position from metadata  
-├── LR_position          # Left/Right eye
 ├── refined_soma/
 │   ├── t                # Soma time (frame)
 │   ├── x                # Soma row
@@ -302,23 +415,22 @@ ap_tracking/
 │   ├── slope            # Line slope
 │   ├── intercept        # Line intercept  
 │   ├── r_value          # Correlation coefficient
-│   └── ...
-├── all_ap_intersection/
-│   ├── x                # ONH x coordinate (column)
-│   ├── y                # ONH y coordinate (row)
-│   ├── mse              # Mean squared error
-│   ├── rmse             # Root mean squared error
-│   ├── method           # "clustered_weighted_mean" or "legacy_weighted_mean"
-│   ├── r2_threshold     # Actual R² threshold used (0.0 for legacy)
-│   ├── consensus_direction  # Degrees [0-360]
-│   ├── n_cluster_points     # Points in main cluster
-│   ├── n_total_intersections # Total pairwise intersections
-│   └── cluster_points   # (N, 2) array of valid intersection points
+│   ├── r_squared        # R² value
+│   ├── direction_angle  # Direction in degrees
+│   └── start_point      # (row, col) of first centroid
 └── soma_polar_coordinates/
     ├── radius           # Distance from ONH to soma
     ├── angle            # Angle in radians
     ├── quadrant         # "Q1", "Q2", "Q3", "Q4"
     └── anatomical_quadrant  # e.g., "dorsal-nasal"
+```
+
+**For non-RGC cells:**
+```
+ap_tracking/
+├── refined_soma/        # Same as RGC
+├── axon_initial_segment/  # Same as RGC
+└── soma_polar_coordinates/  # Same as RGC (uses ONH from RGCs)
 ```
 
 ---
@@ -329,18 +441,22 @@ ap_tracking/
 |-----------|---------|-------------|
 | `r2_threshold` | 0.8 | Minimum R² for pathway inclusion |
 | `direction_tolerance` | 45° | Max deviation from consensus direction |
-| `max_distance_from_center` | 98 | Max intersection distance from (33,33) |
-| `cluster_eps` | 15 | DBSCAN neighborhood radius |
-| `cluster_min_samples` | 3 | DBSCAN minimum cluster size |
+| `max_distance_from_center` | 98 | Max ONH distance from (33,33) |
+| `center_point` | (33, 33) | Center of MEA chip |
+| `centroid_exclude_fraction` | 0.1 | Exclude first 10% of centroids |
 | `centroid_start_frame` | 10 | Exclude centroids before this frame |
 | `max_displacement_post` | 5.0 | Max displacement for trajectory continuity |
 | `min_points_for_fit` | 10 | Minimum centroids for pathway fitting |
+| `min_pathways` | 5 | Minimum pathways for ONH calculation |
+| `min_remaining_fraction` | 0.2 | Stop if < 20% of original pathways remain |
+| `boundary_tolerance` | 0.95 | Consider "at boundary" if > 95% of max distance |
+| `max_iterations` | 50 | Maximum pathway elimination iterations |
+| `removal_fraction` | 0.1 | Starting removal rate (10%), escalates on no progress |
 
 ---
 
 ## References
 
-- DBSCAN clustering: Ester et al., 1996
+- Constrained optimization: scipy.optimize.minimize with SLSQP
 - Circular statistics: Mardia & Jupp, 2000
 - Spike-triggered average: Chichilnisky, 2001
-

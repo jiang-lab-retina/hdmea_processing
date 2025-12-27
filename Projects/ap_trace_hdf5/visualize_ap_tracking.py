@@ -154,9 +154,56 @@ def load_ap_tracking_data(hdf5_path: Path) -> RecordingAPData:
         if "units" not in f:
             return recording
 
+        # Load retina-level metadata from metadata/ap_tracking/ (shared by all units)
+        shared_dv = None
+        shared_nt = None
+        shared_lr = None
+        shared_intersection_x = None
+        shared_intersection_y = None
+        
+        meta_ap_path = "metadata/ap_tracking"
+        if meta_ap_path in f:
+            meta_ap = f[meta_ap_path]
+            
+            # DVNT position
+            if "DV_position" in meta_ap:
+                val = meta_ap["DV_position"][()]
+                if not (isinstance(val, float) and np.isnan(val)):
+                    shared_dv = float(val)
+            if "NT_position" in meta_ap:
+                val = meta_ap["NT_position"][()]
+                if not (isinstance(val, float) and np.isnan(val)):
+                    shared_nt = float(val)
+            if "LR_position" in meta_ap:
+                lr = meta_ap["LR_position"][()]
+                shared_lr = lr.decode("utf-8") if isinstance(lr, bytes) else str(lr)
+            
+            # Intersection from all_ap_intersection subgroup
+            if "all_ap_intersection" in meta_ap:
+                int_grp = meta_ap["all_ap_intersection"]
+                if "x" in int_grp:
+                    val = int_grp["x"][()]
+                    if not (isinstance(val, float) and np.isnan(val)):
+                        shared_intersection_x = float(val)
+                if "y" in int_grp:
+                    val = int_grp["y"][()]
+                    if not (isinstance(val, float) and np.isnan(val)):
+                        shared_intersection_y = float(val)
+        
+        # Set recording-level intersection
+        recording.intersection_x = shared_intersection_x
+        recording.intersection_y = shared_intersection_y
+
         for unit_id in f["units"].keys():
             unit_data = UnitAPData(unit_id=unit_id)
             unit_path = f"units/{unit_id}"
+            
+            # Populate shared DVNT and intersection for each unit (for display compatibility)
+            unit_data.dv_position = shared_dv
+            unit_data.nt_position = shared_nt
+            unit_data.lr_position = shared_lr
+            unit_data.intersection_x = shared_intersection_x
+            unit_data.intersection_y = shared_intersection_y
 
             # Load cell type (from auto_label/axon_type)
             cell_type_path = f"{unit_path}/auto_label/axon_type"
@@ -179,15 +226,6 @@ def load_ap_tracking_data(hdf5_path: Path) -> RecordingAPData:
                 continue
 
             ap_grp = f[ap_path]
-
-            # DVNT position
-            if "DV_position" in ap_grp:
-                unit_data.dv_position = float(ap_grp["DV_position"][()])
-            if "NT_position" in ap_grp:
-                unit_data.nt_position = float(ap_grp["NT_position"][()])
-            if "LR_position" in ap_grp:
-                lr = ap_grp["LR_position"][()]
-                unit_data.lr_position = lr.decode("utf-8") if isinstance(lr, bytes) else str(lr)
 
             # Refined soma
             if "refined_soma" in ap_grp:
@@ -237,13 +275,8 @@ def load_ap_tracking_data(hdf5_path: Path) -> RecordingAPData:
                 if "std_err" in pw_grp:
                     unit_data.pathway_std_err = float(pw_grp["std_err"][()])
 
-            # Intersection
-            if "all_ap_intersection" in ap_grp:
-                int_grp = ap_grp["all_ap_intersection"]
-                if "x" in int_grp:
-                    unit_data.intersection_x = float(int_grp["x"][()])
-                if "y" in int_grp:
-                    unit_data.intersection_y = float(int_grp["y"][()])
+            # Note: Intersection is now read from metadata/ap_tracking/all_ap_intersection
+            # and set above for all units from shared data
 
             # Polar coordinates
             if "soma_polar_coordinates" in ap_grp:
@@ -286,11 +319,6 @@ def load_ap_tracking_data(hdf5_path: Path) -> RecordingAPData:
                     unit_data.polar_angle_correction = float(polar_grp["angle_correction_applied"][()])
 
             recording.units[unit_id] = unit_data
-
-            # Track common intersection
-            if unit_data.intersection_x is not None:
-                recording.intersection_x = unit_data.intersection_x
-                recording.intersection_y = unit_data.intersection_y
 
     return recording
 
@@ -1338,7 +1366,7 @@ if __name__ == "__main__":
     # ==========================================================================
     
     # Option 1: Direct path to HDF5 file (will auto-run AP tracking if needed)
-    INPUT_FILE = "Projects/ap_trace_hdf5/export/2024.03.25-13.44.04-Rec.h5"
+    INPUT_FILE = "Projects/ap_trace_hdf5/export/2024.03.25-15.38.58-Rec.h5"
     
     # Option 2: Use file in export folder (already processed)
     # INPUT_FILE = "Projects/ap_trace_hdf5/export/2024.05.23-12.05.03-Rec.h5"

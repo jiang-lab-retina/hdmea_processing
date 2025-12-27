@@ -47,6 +47,8 @@ R2_THRESHOLD = 0.8         # Minimum R² for valid line fit
 MAX_DISPLACEMENT = 100     # Maximum centroid displacement between frames (default 5, set high to keep all)
 CENTROID_START_FRAME = 10  # Exclude centroids before this frame (default 0, set to 10 to skip early frames)
 MAX_DISPLACEMENT_POST = 5.0  # Post-processing: remove centroids with >5px jump to neighbors
+CENTROID_EXCLUDE_FRACTION = 0.1  # Exclude first 10% of centroids for ONH optimization
+MIN_REMAINING_FRACTION = 0.2  # Stop ONH refinement if < 20% of pathways remain
 
 # Bad lanes preprocessing
 FIX_BAD_LANES = True       # Set to False to skip bad lanes preprocessing
@@ -330,6 +332,8 @@ def main():
             max_displacement=MAX_DISPLACEMENT,
             centroid_start_frame=CENTROID_START_FRAME,
             max_displacement_post=MAX_DISPLACEMENT_POST,
+            centroid_exclude_fraction=CENTROID_EXCLUDE_FRACTION,
+            min_remaining_fraction=MIN_REMAINING_FRACTION,
         )
         print("   AP tracking completed successfully!")
 
@@ -342,48 +346,109 @@ def main():
     # Validate output structure
     print("\n6. Validating output structure...")
     with h5py.File(target_file, "r") as f:
-        processed_count = 0
+        # Check retina-level metadata (shared by all units)
+        meta_ap_path = "metadata/ap_tracking"
+        if meta_ap_path in f:
+            meta_ap = f[meta_ap_path]
+            
+            # Check required metadata fields
+            meta_required = ["DV_position", "NT_position", "LR_position", "_processed_at", "all_ap_intersection"]
+            meta_missing = [field for field in meta_required if field not in meta_ap]
+            
+            if meta_missing:
+                print(f"   metadata/ap_tracking: Missing fields: {meta_missing}")
+            else:
+                dv = meta_ap["DV_position"][()]
+                nt = meta_ap["NT_position"][()]
+                lr = meta_ap["LR_position"][()]
+                if isinstance(lr, bytes):
+                    lr = lr.decode("utf-8")
+                processed_at = meta_ap["_processed_at"][()]
+                if isinstance(processed_at, bytes):
+                    processed_at = processed_at.decode("utf-8")
+                
+                # Check ONH intersection
+                int_grp = meta_ap["all_ap_intersection"]
+                onh_x = int_grp["x"][()]
+                onh_y = int_grp["y"][()]
+                method = int_grp["method"][()]
+                if isinstance(method, bytes):
+                    method = method.decode("utf-8")
+                rmse = int_grp["rmse"][()] if "rmse" in int_grp else 0.0
+                
+                print(f"   metadata/ap_tracking: OK")
+                print(f"      DVNT: DV={dv}, NT={nt}, LR={lr}")
+                print(f"      ONH: ({onh_x:.2f}, {onh_y:.2f}), RMSE={rmse:.4f}")
+                print(f"      Method: {method}")
+                
+                # Show algorithm-specific details
+                if method in ("global_optimization", "iterative_refinement"):
+                    n_cells = int_grp["n_cells_used"][()] if "n_cells_used" in int_grp else 0
+                    n_centroids = int_grp["n_centroids_used"][()] if "n_centroids_used" in int_grp else 0
+                    exclude_frac = int_grp["centroid_exclude_fraction"][()] if "centroid_exclude_fraction" in int_grp else 0.1
+                    n_removed = len(int_grp["outlier_unit_ids"][:]) if "outlier_unit_ids" in int_grp else 0
+                    print(f"      Cells: {n_cells}, Centroids: {n_centroids}, Excluded: {exclude_frac*100:.0f}%")
+                    if n_removed > 0:
+                        print(f"      Removed: {n_removed} pathways for boundary compliance")
+                    # Show distance from center
+                    dist = np.sqrt((onh_x - 33)**2 + (onh_y - 33)**2)
+                    print(f"      Distance from center: {dist:.2f} px (max: 98)")
+                else:
+                    n_cluster = int_grp["n_cluster_points"][()] if "n_cluster_points" in int_grp else 0
+                    n_total = int_grp["n_total_intersections"][()] if "n_total_intersections" in int_grp else 0
+                    print(f"      Cluster: {n_cluster}/{n_total} points")
+                
+                print(f"      Processed at: {processed_at}")
+        else:
+            print(f"   ERROR: metadata/ap_tracking not found!")
+        
+        # Check per-unit fields
+        rgc_count = 0
+        non_rgc_count = 0
+        
         for unit_id in list(f["units"].keys())[:]:
             ap_path = f"units/{unit_id}/features/ap_tracking"
 
             if ap_path not in f:
                 continue
 
-            processed_count += 1
             ap_group = f[ap_path]
-
-            # Check required fields
-            required_fields = [
-                "DV_position", "NT_position", "LR_position",
-                "refined_soma", "axon_initial_segment",
-                "prediction_sta_data", "post_processed_data",
-                "ap_pathway", "all_ap_intersection", "soma_polar_coordinates",
-            ]
+            
+            # Determine if this is RGC (has prediction) or non-RGC (soma only)
+            has_prediction = "prediction_sta_data" in ap_group
+            
+            # Required fields for all cells
+            base_required = ["refined_soma", "axon_initial_segment", "soma_polar_coordinates"]
+            
+            # Additional fields for RGC cells only
+            if has_prediction:
+                rgc_count += 1
+                required_fields = base_required + ["prediction_sta_data", "post_processed_data", "ap_pathway"]
+            else:
+                non_rgc_count += 1
+                required_fields = base_required
 
             missing = [field for field in required_fields if field not in ap_group]
             if missing:
-                print(f"   Unit {unit_id}: Missing fields: {missing}")
+                cell_type = "RGC" if has_prediction else "non-RGC"
+                print(f"   Unit {unit_id} ({cell_type}): Missing fields: {missing}")
             else:
-                # Read some values for verification
-                dv = ap_group["DV_position"][()]
-                nt = ap_group["NT_position"][()]
-                lr = ap_group["LR_position"][()]
-                if isinstance(lr, bytes):
-                    lr = lr.decode("utf-8")
-
                 soma_t = ap_group["refined_soma/t"][()]
                 soma_x = ap_group["refined_soma/x"][()]
                 soma_y = ap_group["refined_soma/y"][()]
 
-                pred_shape = ap_group["prediction_sta_data"].shape
-
-                print(f"   Unit {unit_id}: OK")
-                print(f"      DVNT: DV={dv}, NT={nt}, LR={lr}")
-                print(f"      Soma: t={soma_t}, x={soma_x}, y={soma_y}")
-                print(f"      Prediction shape: {pred_shape}")
+                if has_prediction:
+                    pred_shape = ap_group["prediction_sta_data"].shape
+                    print(f"   Unit {unit_id}: OK")
+                    print(f"      Soma: t={soma_t}, x={soma_x}, y={soma_y}")
+                    print(f"      Prediction shape: {pred_shape}")
         
-        if processed_count == 0:
-            print("   WARNING: No units with ap_tracking found in first 5 units")
+        # Summary
+        total_processed = rgc_count + non_rgc_count
+        if total_processed == 0:
+            print("   WARNING: No units with ap_tracking found")
+        else:
+            print(f"\n   Summary: {rgc_count} RGCs + {non_rgc_count} non-RGCs = {total_processed} units with ap_tracking")
 
     print("\n" + "=" * 60)
     print("AP Tracking Example Complete!")

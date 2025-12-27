@@ -37,11 +37,14 @@ FILTER_BY_CELL_TYPE = True  # Set to False to process all units
 CELL_TYPE_FILTER = "rgc"    # Only process units with this cell type
 
 # AP tracking parameters
+MAX_UNITS = None           # Limit number of units to process (None = all)
 MIN_POINTS_FOR_FIT = 10    # Minimum tracked axon points for line fitting
 R2_THRESHOLD = 0.8         # Minimum R² for valid line fit
 MAX_DISPLACEMENT = 100     # Maximum centroid displacement between frames (default 5, set high to keep all)
 CENTROID_START_FRAME = 10  # Exclude centroids before this frame (default 0, set to 10 to skip early frames)
 MAX_DISPLACEMENT_POST = 5.0  # Post-processing: remove centroids with >5px jump to neighbors
+CENTROID_EXCLUDE_FRACTION = 0.1  # Exclude first 10% of centroids for ONH optimization
+MIN_REMAINING_FRACTION = 0.2  # Stop ONH refinement if < 20% of pathways remain
 
 # Bad lanes preprocessing
 FIX_BAD_LANES = True       # Set to False to skip bad lanes preprocessing
@@ -243,7 +246,7 @@ def process_single_file(input_path: Path, output_path: Path) -> bool:
         compute_ap_tracking(
             output_path,
             MODEL_PATH,
-            max_units=None,
+            max_units=MAX_UNITS,
             force_cpu=FORCE_CPU,
             filter_by_cell_type=FILTER_BY_CELL_TYPE,
             cell_type_filter=CELL_TYPE_FILTER,
@@ -252,7 +255,42 @@ def process_single_file(input_path: Path, output_path: Path) -> bool:
             max_displacement=MAX_DISPLACEMENT,
             centroid_start_frame=CENTROID_START_FRAME,
             max_displacement_post=MAX_DISPLACEMENT_POST,
+            centroid_exclude_fraction=CENTROID_EXCLUDE_FRACTION,
+            min_remaining_fraction=MIN_REMAINING_FRACTION,
         )
+        
+        # Quick validation summary
+        with h5py.File(output_path, "r") as f:
+            meta_ap_path = "metadata/ap_tracking"
+            if meta_ap_path in f:
+                meta_ap = f[meta_ap_path]
+                if "all_ap_intersection" in meta_ap:
+                    int_grp = meta_ap["all_ap_intersection"]
+                    onh_x = int_grp["x"][()] if "x" in int_grp else np.nan
+                    onh_y = int_grp["y"][()] if "y" in int_grp else np.nan
+                    method = int_grp["method"][()]
+                    if isinstance(method, bytes):
+                        method = method.decode("utf-8")
+                    rmse = int_grp["rmse"][()] if "rmse" in int_grp else 0.0
+                    n_cells = int_grp["n_cells_used"][()] if "n_cells_used" in int_grp else 0
+                    
+                    if not np.isnan(onh_x):
+                        dist = np.sqrt((onh_x - 33)**2 + (onh_y - 33)**2)
+                        print(f"  ONH: ({onh_x:.1f}, {onh_y:.1f}), RMSE={rmse:.3f}, cells={n_cells}, dist={dist:.1f}px")
+                    else:
+                        print(f"  ONH: Failed to calculate (method={method})")
+            
+            # Count processed units
+            rgc_count = 0
+            non_rgc_count = 0
+            for uid in f["units"].keys():
+                ap_path = f"units/{uid}/features/ap_tracking"
+                if ap_path in f:
+                    if "prediction_sta_data" in f[ap_path]:
+                        rgc_count += 1
+                    else:
+                        non_rgc_count += 1
+            print(f"  Processed: {rgc_count} RGCs + {non_rgc_count} non-RGCs")
         
         return True
         
@@ -373,13 +411,16 @@ def write_processing_log(files, successful, failed, skipped, total_time):
             f.write(f"  Memory:          {gpu_info['device_memory_gb']:.1f} GB\n")
         f.write(f"  Mode used:       {'CPU (forced)' if FORCE_CPU else ('GPU' if gpu_info['cuda_available'] else 'CPU')}\n")
         f.write(f"\nParameters:\n")
-        f.write(f"  filter_by_cell_type:   {FILTER_BY_CELL_TYPE}\n")
-        f.write(f"  cell_type_filter:      {CELL_TYPE_FILTER}\n")
-        f.write(f"  min_points_for_fit:    {MIN_POINTS_FOR_FIT}\n")
-        f.write(f"  r2_threshold:          {R2_THRESHOLD}\n")
-        f.write(f"  max_displacement:      {MAX_DISPLACEMENT}\n")
-        f.write(f"  centroid_start_frame:  {CENTROID_START_FRAME}\n")
-        f.write(f"  max_displacement_post: {MAX_DISPLACEMENT_POST}\n")
+        f.write(f"  filter_by_cell_type:       {FILTER_BY_CELL_TYPE}\n")
+        f.write(f"  cell_type_filter:          {CELL_TYPE_FILTER}\n")
+        f.write(f"  max_units:                 {MAX_UNITS}\n")
+        f.write(f"  min_points_for_fit:        {MIN_POINTS_FOR_FIT}\n")
+        f.write(f"  r2_threshold:              {R2_THRESHOLD}\n")
+        f.write(f"  max_displacement:          {MAX_DISPLACEMENT}\n")
+        f.write(f"  centroid_start_frame:      {CENTROID_START_FRAME}\n")
+        f.write(f"  max_displacement_post:     {MAX_DISPLACEMENT_POST}\n")
+        f.write(f"  centroid_exclude_fraction: {CENTROID_EXCLUDE_FRACTION}\n")
+        f.write(f"  min_remaining_fraction:    {MIN_REMAINING_FRACTION}\n")
         f.write(f"\nResults:\n")
         f.write(f"  Successful: {successful}\n")
         f.write(f"  Failed:     {failed}\n")
