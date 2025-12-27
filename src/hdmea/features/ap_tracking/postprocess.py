@@ -131,6 +131,7 @@ def extract_axon_centroids(
     exclude_center: Optional[Tuple[int, int]] = None,
     exclude_radius: int = 5,
     max_displacement: int = 5,
+    start_frame: int = 0,
 ) -> np.ndarray:
     """
     Extract axon centroids from filtered prediction data.
@@ -140,6 +141,7 @@ def extract_axon_centroids(
         exclude_center: Optional (row, col) center to exclude (e.g., soma)
         exclude_radius: Radius around center to exclude
         max_displacement: Maximum allowed displacement between frames
+        start_frame: First frame to include in centroid extraction (default: 0)
 
     Returns:
         Array of centroids with shape (N, 3) for (t, x, y)
@@ -149,7 +151,7 @@ def extract_axon_centroids(
 
     prev_centroid = None
 
-    for t in range(t_dim):
+    for t in range(start_frame, t_dim):
         frame = filtered_prediction[t].copy()
 
         # Exclude soma region if specified
@@ -203,6 +205,76 @@ def extract_axon_centroids(
         return np.array([], dtype=np.float32).reshape(0, 3)
 
 
+def filter_outlier_centroids(
+    centroids: np.ndarray,
+    max_displacement: float = 5.0,
+) -> np.ndarray:
+    """
+    Post-process centroids to remove outlier segments using trajectory split detection.
+    
+    Detects "breaks" in the trajectory where displacement exceeds threshold,
+    splits into segments, and keeps only the longest continuous segment.
+    This handles cases where multiple consecutive outlier dots form a separate cluster.
+    
+    Args:
+        centroids: Array of shape (N, 3) with columns [t, x, y]
+        max_displacement: Maximum allowed displacement between consecutive centroids (default: 5.0)
+    
+    Returns:
+        Filtered centroids array containing only the longest continuous segment
+    """
+    if centroids is None or len(centroids) < 2:
+        return centroids
+    
+    # Sort by time
+    sorted_idx = np.argsort(centroids[:, 0])
+    sorted_centroids = centroids[sorted_idx]
+    
+    n_points = len(sorted_centroids)
+    
+    # Find break points (where displacement exceeds threshold)
+    break_indices = []
+    for i in range(1, n_points):
+        x_curr, y_curr = sorted_centroids[i, 1], sorted_centroids[i, 2]
+        x_prev, y_prev = sorted_centroids[i - 1, 1], sorted_centroids[i - 1, 2]
+        dist = np.sqrt((x_curr - x_prev) ** 2 + (y_curr - y_prev) ** 2)
+        
+        if dist > max_displacement:
+            break_indices.append(i)
+            logger.debug(f"Trajectory break at index {i} (t={sorted_centroids[i, 0]}): "
+                        f"displacement={dist:.1f} > {max_displacement}")
+    
+    # If no breaks, return all centroids
+    if not break_indices:
+        return sorted_centroids
+    
+    # Split into segments
+    segments = []
+    start = 0
+    for break_idx in break_indices:
+        if break_idx > start:
+            segments.append(sorted_centroids[start:break_idx])
+        start = break_idx
+    # Add final segment
+    if start < n_points:
+        segments.append(sorted_centroids[start:])
+    
+    # Find the longest segment
+    # Prefer earlier segments if lengths are equal (main trajectory usually starts earlier)
+    if not segments:
+        return np.array([], dtype=np.float32).reshape(0, 3)
+    
+    # Score segments by length, with tie-breaker favoring earlier start time
+    best_segment = max(segments, key=lambda s: (len(s), -s[0, 0] if len(s) > 0 else 0))
+    
+    removed_count = n_points - len(best_segment)
+    if removed_count > 0:
+        logger.debug(f"Kept longest segment ({len(best_segment)} points), "
+                    f"removed {removed_count} outlier centroids from {len(segments)} segments")
+    
+    return best_segment
+
+
 def process_predictions(
     prediction: np.ndarray,
     soma_xy: Optional[Tuple[int, int]] = None,
@@ -211,6 +283,8 @@ def process_predictions(
     centroid_threshold: float = 0.05,
     max_displacement: int = 5,
     min_cluster_size: int = 3,
+    start_frame: int = 0,
+    max_displacement_post: float = 5.0,
 ) -> Dict:
     """
     Process CNN predictions to extract axon tracking data.
@@ -221,8 +295,10 @@ def process_predictions(
         temporal_window_size: Window size for temporal filtering
         exclude_radius: Radius around soma to exclude
         centroid_threshold: Threshold for centroid extraction
-        max_displacement: Maximum frame-to-frame displacement
+        max_displacement: Maximum frame-to-frame displacement during extraction
         min_cluster_size: Minimum cluster size for noise filtering
+        start_frame: First frame to include in centroid extraction (default: 0)
+        max_displacement_post: Maximum displacement for post-processing outlier removal (default: 5.0)
 
     Returns:
         Dictionary with 'filtered_prediction' and 'axon_centroids'
@@ -241,9 +317,15 @@ def process_predictions(
         exclude_center=soma_xy,
         exclude_radius=exclude_radius,
         max_displacement=max_displacement,
+        start_frame=start_frame,
     )
 
-    logger.debug(f"Extracted {len(centroids)} axon centroids")
+    logger.debug(f"Extracted {len(centroids)} axon centroids (starting from frame {start_frame})")
+
+    # Post-process to remove outlier centroids
+    if len(centroids) > 0 and max_displacement_post > 0:
+        centroids = filter_outlier_centroids(centroids, max_displacement=max_displacement_post)
+        logger.debug(f"After post-processing: {len(centroids)} centroids")
 
     return {
         "filtered_prediction": filtered,

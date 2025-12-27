@@ -23,12 +23,21 @@ from .model_inference import load_cnn_model, run_model_inference, select_device
 from .pathway_analysis import (
     APIntersection,
     APPathway,
+    ONHResult,
     SomaPolarCoordinates,
     _calculate_angle_correction,
+    calculate_direction_from_centroids,
+    calculate_enhanced_intersection,
     calculate_optimal_intersection,
-    calculate_projections,
     calculate_soma_polar_coordinates,
-    fit_line_to_projections,
+    fit_line_to_centroids,
+    # Default parameters
+    DEFAULT_R2_THRESHOLD,
+    DEFAULT_DIRECTION_TOLERANCE,
+    DEFAULT_MAX_DISTANCE_FROM_CENTER,
+    DEFAULT_CENTER_POINT,
+    DEFAULT_CLUSTER_EPS,
+    DEFAULT_CLUSTER_MIN_SAMPLES,
 )
 from .postprocess import process_predictions
 from .soma_detector import find_soma_from_3d_sta
@@ -162,6 +171,7 @@ def write_ap_tracking_to_hdf5(
     ap_pathway: Optional[APPathway],
     intersection: Optional[APIntersection],
     polar_coords: Optional[SomaPolarCoordinates],
+    onh_result: Optional[ONHResult] = None,
 ) -> None:
     """
     Write AP tracking results to HDF5 as explicit datasets.
@@ -252,14 +262,38 @@ def write_ap_tracking_to_hdf5(
         for key in ["slope", "intercept", "r_value", "p_value", "std_err"]:
             _write_scalar_dataset(pathway_group, key, None)
 
-    # Write intersection
+    # Write intersection (enhanced ONH result takes precedence)
     int_group = ap_group.create_group("all_ap_intersection")
-    if intersection:
+    if onh_result:
+        # Enhanced intersection with clustering
+        _write_scalar_dataset(int_group, "x", onh_result.x)
+        _write_scalar_dataset(int_group, "y", onh_result.y)
+        _write_scalar_dataset(int_group, "mse", onh_result.mse)
+        _write_scalar_dataset(int_group, "rmse", onh_result.rmse)
+        _write_scalar_dataset(int_group, "n_cluster_points", onh_result.n_cluster_points)
+        _write_scalar_dataset(int_group, "n_total_intersections", onh_result.n_total_intersections)
+        _write_scalar_dataset(int_group, "n_valid_after_direction", onh_result.n_valid_after_direction)
+        _write_scalar_dataset(int_group, "consensus_direction", onh_result.consensus_direction)
+        _write_scalar_dataset(int_group, "r2_threshold", onh_result.r2_threshold)
+        _write_scalar_dataset(int_group, "direction_tolerance", onh_result.direction_tolerance)
+        _write_scalar_dataset(int_group, "cluster_eps", onh_result.cluster_eps)
+        _write_scalar_dataset(int_group, "cluster_min_samples", onh_result.cluster_min_samples)
+        _write_scalar_dataset(int_group, "method", onh_result.method)
+        # Save cluster points array
+        if onh_result.cluster_points is not None and len(onh_result.cluster_points) > 0:
+            _write_array_dataset(int_group, "cluster_points", onh_result.cluster_points)
+    elif intersection:
+        # Legacy intersection (fallback)
         _write_scalar_dataset(int_group, "x", intersection.x)
         _write_scalar_dataset(int_group, "y", intersection.y)
+        _write_scalar_dataset(int_group, "mse", intersection.mse)
+        _write_scalar_dataset(int_group, "method", "legacy_weighted_mean")
+        _write_scalar_dataset(int_group, "r2_threshold", 0.0)  # Legacy doesn't filter by R²
     else:
         _write_scalar_dataset(int_group, "x", None)
         _write_scalar_dataset(int_group, "y", None)
+        _write_scalar_dataset(int_group, "method", None)
+        _write_scalar_dataset(int_group, "r2_threshold", None)
 
     # Write polar coordinates (legacy method with angle correction)
     polar_group = ap_group.create_group("soma_polar_coordinates")
@@ -327,6 +361,8 @@ def process_single_unit(
     exclude_radius: int = 5,
     centroid_threshold: float = 0.05,
     max_displacement: int = 5,
+    centroid_start_frame: int = 0,
+    max_displacement_post: float = 5.0,
     # Pathway fitting parameters
     min_points_for_fit: int = 10,
 ) -> Dict[str, Any]:
@@ -402,14 +438,16 @@ def process_single_unit(
             exclude_radius=exclude_radius,
             centroid_threshold=centroid_threshold,
             max_displacement=max_displacement,
+            start_frame=centroid_start_frame,
+            max_displacement_post=max_displacement_post,
         )
     result["post_processed"] = post_processed
 
-    # Fit AP pathway
+    # Fit AP pathway using axon centroids
     ap_pathway = None
     if post_processed:
-        projections = calculate_projections(post_processed)
-        ap_pathway = fit_line_to_projections(projections, min_points=min_points_for_fit)
+        axon_centroids = post_processed.get("axon_centroids")
+        ap_pathway = fit_line_to_centroids(axon_centroids, min_points=min_points_for_fit)
     result["ap_pathway"] = ap_pathway
 
     result["status"] = "complete"
@@ -428,6 +466,9 @@ def compute_ap_tracking(
     session: Optional[Any] = None,
     force_cpu: bool = False,
     max_units: Optional[int] = None,
+    # Cell type filtering
+    filter_by_cell_type: bool = True,
+    cell_type_filter: str = "rgc",
     # Soma/AIS detection parameters
     soma_std_threshold: float = 3.0,
     soma_temporal_range: Tuple[int, int] = (5, 27),
@@ -441,22 +482,31 @@ def compute_ap_tracking(
     exclude_radius: int = 5,
     centroid_threshold: float = 0.05,
     max_displacement: int = 5,
+    centroid_start_frame: int = 0,
+    max_displacement_post: float = 5.0,
     # Pathway fitting parameters
     min_points_for_fit: int = 10,
-    r2_threshold: float = 0.8,
+    r2_threshold: float = DEFAULT_R2_THRESHOLD,
+    # Enhanced ONH detection parameters
+    direction_tolerance: float = DEFAULT_DIRECTION_TOLERANCE,
+    max_distance_from_center: float = DEFAULT_MAX_DISTANCE_FROM_CENTER,
+    center_point: Tuple[float, float] = DEFAULT_CENTER_POINT,
+    cluster_eps: float = DEFAULT_CLUSTER_EPS,
+    cluster_min_samples: int = DEFAULT_CLUSTER_MIN_SAMPLES,
 ) -> Optional[Any]:
     """
     Compute AP tracking features for all units in an HDF5 file.
 
     This is the main entry point for AP tracking analysis. It:
-    1. Reads eimage_sta data from each unit
-    2. Detects soma and axon initial segment
-    3. Applies CNN model to predict axon signal probability
-    4. Post-processes predictions to extract axon centroids
-    5. Fits AP pathway lines and calculates intersection
-    6. Computes soma polar coordinates
-    7. Parses DVNT positions from metadata
-    8. Writes all results to units/{unit_id}/features/ap_tracking/
+    1. Filters units by cell type (RGC only by default)
+    2. Reads eimage_sta data from each unit
+    3. Detects soma and axon initial segment
+    4. Applies CNN model to predict axon signal probability
+    5. Post-processes predictions to extract axon centroids
+    6. Fits AP pathway lines and calculates intersection
+    7. Computes soma polar coordinates
+    8. Parses DVNT positions from metadata
+    9. Writes all results to units/{unit_id}/features/ap_tracking/
 
     Args:
         hdf5_path: Path to input HDF5 file with eimage_sta computed
@@ -464,7 +514,13 @@ def compute_ap_tracking(
         session: Optional PipelineSession for deferred save mode
         force_cpu: Force CPU inference even if GPU available
         max_units: Maximum number of units to process (None = all)
-        [other parameters]: See docstring for full list
+        filter_by_cell_type: If True, only process units matching cell_type_filter.
+            Cell type is read from units/{unit_id}/auto_label/axon_type.
+            Units without auto_label are skipped when filtering is enabled.
+        cell_type_filter: Cell type to filter for (default: "rgc").
+            Only used when filter_by_cell_type=True.
+        min_points_for_fit: Minimum tracked axon points required for line fitting
+        r2_threshold: Minimum R² value for line fit to be considered valid
 
     Returns:
         If session provided: Updated PipelineSession with ap_tracking results
@@ -499,7 +555,36 @@ def compute_ap_tracking(
         if "units" not in root:
             raise ValueError(f"No units group in HDF5 file: {hdf5_path}")
 
-        unit_ids = list(root["units"].keys())
+        all_unit_ids = list(root["units"].keys())
+        
+        # Filter by cell type if enabled
+        if filter_by_cell_type:
+            unit_ids = []
+            skipped_no_label = 0
+            skipped_wrong_type = 0
+            
+            for uid in all_unit_ids:
+                auto_label_path = f"units/{uid}/auto_label/axon_type"
+                if auto_label_path not in root:
+                    skipped_no_label += 1
+                    continue
+                
+                cell_type = root[auto_label_path][()]
+                if isinstance(cell_type, bytes):
+                    cell_type = cell_type.decode('utf-8')
+                
+                if cell_type.lower() == cell_type_filter.lower():
+                    unit_ids.append(uid)
+                else:
+                    skipped_wrong_type += 1
+            
+            logger.info(
+                f"Cell type filter '{cell_type_filter}': {len(unit_ids)} units selected, "
+                f"{skipped_wrong_type} wrong type, {skipped_no_label} no label"
+            )
+        else:
+            unit_ids = all_unit_ids
+        
         if max_units:
             unit_ids = unit_ids[:max_units]
 
@@ -523,28 +608,80 @@ def compute_ap_tracking(
                 exclude_radius=exclude_radius,
                 centroid_threshold=centroid_threshold,
                 max_displacement=max_displacement,
+                centroid_start_frame=centroid_start_frame,
+                max_displacement_post=max_displacement_post,
                 min_points_for_fit=min_points_for_fit,
             )
 
             all_results[unit_id] = result
 
-            # Collect valid pathways for intersection calculation
+            # Collect pathways and add direction info
             if result["ap_pathway"] is not None:
-                r2 = result["ap_pathway"].r_value ** 2
-                if r2 > r2_threshold:
-                    all_pathways[unit_id] = result["ap_pathway"]
+                ap_pathway = result["ap_pathway"]
+                
+                # Calculate direction from centroids
+                if result["post_processed"]:
+                    axon_centroids = result["post_processed"].get("axon_centroids")
+                    direction_angle, start_point = calculate_direction_from_centroids(
+                        axon_centroids
+                    )
+                    ap_pathway.direction_angle = direction_angle
+                    ap_pathway.start_point = start_point
+                
+                all_pathways[unit_id] = ap_pathway
 
-        # Calculate optimal intersection from all valid pathways
+        # Calculate enhanced ONH intersection using clustering
+        onh_result = None
         intersection = None
+        used_method = None
+        actual_r2_threshold = r2_threshold
+        
         if len(all_pathways) >= 2:
-            intersection = calculate_optimal_intersection(all_pathways)
-            if intersection:
-                logger.info(
-                    f"Optimal intersection at ({intersection.x:.2f}, {intersection.y:.2f})"
+            logger.info(f"Calculating ONH from {len(all_pathways)} pathways...")
+            
+            # Try enhanced algorithm with progressively lower R² thresholds
+            current_r2 = r2_threshold
+            while current_r2 >= 0.4 and onh_result is None:
+                logger.info(f"Trying enhanced ONH detection with R²≥{current_r2:.1f}...")
+                onh_result = calculate_enhanced_intersection(
+                    all_pathways,
+                    r2_threshold=current_r2,
+                    direction_tolerance=direction_tolerance,
+                    max_distance_from_center=max_distance_from_center,
+                    center_point=center_point,
+                    cluster_eps=cluster_eps,
+                    cluster_min_samples=cluster_min_samples,
                 )
+                
+                if onh_result:
+                    actual_r2_threshold = current_r2
+                    used_method = "enhanced"
+                    logger.info(
+                        f"ONH detected at ({onh_result.x:.2f}, {onh_result.y:.2f}), "
+                        f"RMSE={onh_result.rmse:.2f}, R²≥{current_r2:.1f}, "
+                        f"cluster={onh_result.n_cluster_points}/{onh_result.n_total_intersections} points"
+                    )
+                    # Create APIntersection for backward compatibility
+                    intersection = APIntersection(
+                        x=onh_result.x, y=onh_result.y, mse=onh_result.mse
+                    )
+                else:
+                    logger.warning(f"Enhanced ONH failed with R²≥{current_r2:.1f}")
+                    current_r2 -= 0.2
+            
+            # Fall back to legacy method if enhanced failed at all thresholds
+            if onh_result is None:
+                logger.warning("Enhanced ONH detection failed at all R² thresholds, trying legacy method")
+                intersection = calculate_optimal_intersection(all_pathways)
+                if intersection:
+                    used_method = "legacy"
+                    actual_r2_threshold = 0.0  # Legacy doesn't filter by R²
+                    logger.info(
+                        f"Legacy intersection at ({intersection.x:.2f}, {intersection.y:.2f})"
+                    )
         else:
             logger.warning(
-                f"Insufficient valid pathways ({len(all_pathways)}) for intersection calculation"
+                f"Insufficient pathways ({len(all_pathways)}) for intersection calculation"
             )
 
         # Calculate angle correction once (shared by all units)
@@ -581,6 +718,7 @@ def compute_ap_tracking(
                 ap_pathway=result["ap_pathway"],
                 intersection=intersection,
                 polar_coords=polar_coords,
+                onh_result=onh_result,
             )
 
     # Count successes

@@ -65,6 +65,9 @@ class UnitAPData:
 
     unit_id: str
 
+    # Cell type (from auto_label/axon_type)
+    cell_type: Optional[str] = None
+
     # Input data
     sta_data: Optional[np.ndarray] = None
 
@@ -154,6 +157,15 @@ def load_ap_tracking_data(hdf5_path: Path) -> RecordingAPData:
         for unit_id in f["units"].keys():
             unit_data = UnitAPData(unit_id=unit_id)
             unit_path = f"units/{unit_id}"
+
+            # Load cell type (from auto_label/axon_type)
+            cell_type_path = f"{unit_path}/auto_label/axon_type"
+            if cell_type_path in f:
+                ct = f[cell_type_path][()]
+                if isinstance(ct, bytes):
+                    unit_data.cell_type = ct.decode("utf-8")
+                else:
+                    unit_data.cell_type = str(ct)
 
             # Load STA data
             sta_path = f"{unit_path}/features/eimage_sta/data"
@@ -263,9 +275,13 @@ def load_ap_tracking_data(hdf5_path: Path) -> RecordingAPData:
                 if "transformed_y" in polar_grp:
                     unit_data.polar_transformed_y = float(polar_grp["transformed_y"][()])
                 if "original_x" in polar_grp:
-                    unit_data.polar_original_x = int(polar_grp["original_x"][()])
+                    val = polar_grp["original_x"][()]
+                    if not np.isnan(val):
+                        unit_data.polar_original_x = int(val)
                 if "original_y" in polar_grp:
-                    unit_data.polar_original_y = int(polar_grp["original_y"][()])
+                    val = polar_grp["original_y"][()]
+                    if not np.isnan(val):
+                        unit_data.polar_original_y = int(val)
                 if "angle_correction_applied" in polar_grp:
                     unit_data.polar_angle_correction = float(polar_grp["angle_correction_applied"][()])
 
@@ -284,25 +300,74 @@ def load_ap_tracking_data(hdf5_path: Path) -> RecordingAPData:
 # =============================================================================
 
 
-def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
+def plot_unit_summary(
+    unit: UnitAPData, 
+    output_path: Path, 
+    bin_size: int = 3,
+    start_frame: int = 5,
+    end_frame: int = 31,
+) -> None:
     """
-    Generate a 3x3 multi-panel figure for a single unit.
+    Generate a multi-panel figure for a single unit with time-binned frame subplots.
+
+    The figure has two sections:
+    1. Top section (3x3 grid): Summary views (max projections, overlays, pathway fit, etc.)
+    2. Bottom section (3 rows x N cols): Time-binned subplots aligned by time
+       - Row 1: STA mean of each bin
+       - Row 2: CNN Prediction mean of each bin
+       - Row 3: Centroids with labeled coordinates for each bin
 
     Args:
         unit: UnitAPData containing all features
         output_path: Path to save the figure
+        bin_size: Number of frames to average together (default: 3)
+        start_frame: First frame to include in binned analysis (default: 5)
+        end_frame: Last frame to include in binned analysis (default: 31)
     """
-    fig, axes = plt.subplots(3, 3, figsize=(16, 14))
+    from matplotlib.gridspec import GridSpec
+    
+    # Calculate number of bins for the specified frame range
+    frame_range = end_frame - start_frame + 1  # inclusive
+    n_bins = (frame_range + bin_size - 1) // bin_size  # Ceiling division
+    n_bins = max(n_bins, 1)  # At least 1 bin
+    
+    # Get total frames from available data for validation
+    n_frames = 0
+    if unit.sta_data is not None:
+        n_frames = unit.sta_data.shape[0]
+    elif unit.prediction_data is not None:
+        n_frames = unit.prediction_data.shape[0]
+    elif unit.filtered_prediction is not None:
+        n_frames = unit.filtered_prediction.shape[0]
+    
+    # Create figure with GridSpec layout
+    # Top: 3 rows x 3 cols for summary views
+    # Bottom: 3 rows x n_bins cols for time-binned data
+    # Width scales with number of bins (9 bins for frames 5-31 with bin_size=3)
+    fig = plt.figure(figsize=(max(16, n_bins * 2.2), 24))
     fig.patch.set_facecolor("#0d1117")
-
-    # Style all axes
-    for ax_row in axes:
-        for ax in ax_row:
-            ax.set_facecolor("#161b22")
-            ax.tick_params(colors="#8b949e", labelsize=8)
-            for spine in ax.spines.values():
-                spine.set_color("#30363d")
-
+    
+    # Create main grid: 6 rows total (3 for summary + 3 for binned)
+    # Height ratios: summary rows are taller than binned rows
+    gs_main = GridSpec(6, 1, figure=fig, height_ratios=[1, 1, 1, 0.7, 0.7, 0.7], hspace=0.35)
+    
+    # Create subgrids for each section (4 columns for summary rows to include "All Centroids")
+    gs_summary_row0 = gs_main[0].subgridspec(1, 4, wspace=0.25)
+    gs_summary_row1 = gs_main[1].subgridspec(1, 4, wspace=0.25)
+    gs_summary_row2 = gs_main[2].subgridspec(1, 4, wspace=0.25)
+    
+    # Create subgrids for binned data (aligned columns)
+    gs_binned_sta = gs_main[3].subgridspec(1, n_bins, wspace=0.08)
+    gs_binned_pred = gs_main[4].subgridspec(1, n_bins, wspace=0.08)
+    gs_binned_cent = gs_main[5].subgridspec(1, n_bins, wspace=0.08)
+    
+    def style_ax(ax):
+        """Apply consistent dark theme styling to an axis."""
+        ax.set_facecolor("#161b22")
+        ax.tick_params(colors="#8b949e", labelsize=8)
+        for spine in ax.spines.values():
+            spine.set_color("#30363d")
+    
     # Title
     fig.suptitle(
         f"AP Tracking Analysis: {unit.unit_id}",
@@ -311,9 +376,14 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
         color="#f0f6fc",
         y=0.98,
     )
-
+    
+    # =========================================================================
+    # ROW 0: Summary views
+    # =========================================================================
+    
     # Panel (0,0): STA max projection with soma and AIS markers
-    ax = axes[0, 0]
+    ax = fig.add_subplot(gs_summary_row0[0])
+    style_ax(ax)
     if unit.sta_data is not None:
         sta_max = np.max(np.abs(unit.sta_data), axis=0)
         im = ax.imshow(sta_max, cmap=NEURAL_CMAP, aspect="equal")
@@ -337,7 +407,8 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
     ax.set_ylabel("Row", color="#8b949e", fontsize=9)
 
     # Panel (0,1): CNN prediction max projection
-    ax = axes[0, 1]
+    ax = fig.add_subplot(gs_summary_row0[1])
+    style_ax(ax)
     if unit.prediction_data is not None:
         pred_max = np.max(unit.prediction_data, axis=0)
         im = ax.imshow(pred_max, cmap=PRED_CMAP, aspect="equal", vmin=0, vmax=1)
@@ -347,7 +418,8 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
     ax.set_ylabel("Row", color="#8b949e", fontsize=9)
 
     # Panel (0,2): Overlay - STA + prediction + centroids
-    ax = axes[0, 2]
+    ax = fig.add_subplot(gs_summary_row0[2])
+    style_ax(ax)
     if unit.sta_data is not None and unit.prediction_data is not None:
         sta_max = np.max(np.abs(unit.sta_data), axis=0)
         pred_max = np.max(unit.prediction_data, axis=0)
@@ -373,9 +445,92 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
     ax.set_title("Overlay + Centroids", color="#c9d1d9", fontsize=10, fontweight="bold")
     ax.set_xlabel("Column", color="#8b949e", fontsize=9)
     ax.set_ylabel("Row", color="#8b949e", fontsize=9)
+    
+    # Panel (0,3): All Centroids with trajectory and labeled coordinates
+    ax = fig.add_subplot(gs_summary_row0[3])
+    style_ax(ax)
+    
+    # Create background grid
+    grid_shape = (65, 65) if unit.sta_data is None else unit.sta_data.shape[1:3]
+    background = np.zeros(grid_shape)
+    ax.imshow(background, cmap="gray", aspect="equal", vmin=0, vmax=0.3)
+    
+    if unit.axon_centroids is not None and len(unit.axon_centroids) > 0:
+        centroids = unit.axon_centroids
+        n_centroids = len(centroids)
+        
+        # Sort centroids by time for trajectory
+        sorted_indices = np.argsort(centroids[:, 0])
+        sorted_centroids = centroids[sorted_indices]
+        
+        # Draw trajectory line connecting consecutive centroids
+        if n_centroids > 1:
+            ax.plot(sorted_centroids[:, 2], sorted_centroids[:, 1], 
+                   color="#4dabf7", linewidth=1.5, alpha=0.6, linestyle="-", zorder=5)
+        
+        # Plot all centroids with time-based coloring
+        scatter = ax.scatter(
+            sorted_centroids[:, 2], sorted_centroids[:, 1],
+            c=sorted_centroids[:, 0], cmap="plasma",
+            s=60, edgecolors="white", linewidths=1, zorder=10,
+            vmin=sorted_centroids[:, 0].min() if n_centroids > 0 else 0,
+            vmax=sorted_centroids[:, 0].max() if n_centroids > 0 else 1,
+        )
+        
+        # Add coordinate labels for each centroid
+        for centroid in sorted_centroids:
+            t, x, y = int(centroid[0]), int(centroid[1]), int(centroid[2])
+            label = f"t{t}:({x},{y})"
+            ax.annotate(
+                label,
+                xy=(y, x),
+                xytext=(4, 4),
+                textcoords="offset points",
+                fontsize=6,
+                color="#7ee787",
+                fontweight="bold",
+                bbox=dict(boxstyle="round,pad=0.15", facecolor="#21262d", 
+                         edgecolor="#30363d", alpha=0.85),
+                zorder=11,
+            )
+        
+        # Add colorbar for time
+        cbar = plt.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label("Frame", color="#c9d1d9", fontsize=8)
+        cbar.ax.tick_params(colors="#8b949e", labelsize=7)
+    
+    # Mark soma position
+    if unit.soma_x is not None and unit.soma_y is not None:
+        ax.scatter([unit.soma_y], [unit.soma_x], c="#ff6b6b", s=150,
+                  marker="*", edgecolors="white", linewidths=2, zorder=12, label="Soma")
+        ax.annotate(
+            f"Soma({unit.soma_x},{unit.soma_y})",
+            xy=(unit.soma_y, unit.soma_x),
+            xytext=(4, -10),
+            textcoords="offset points",
+            fontsize=7,
+            color="#ff6b6b",
+            fontweight="bold",
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="#21262d", 
+                     edgecolor="#30363d", alpha=0.85),
+            zorder=13,
+        )
+    
+    ax.set_xlim(-1, grid_shape[1])
+    ax.set_ylim(grid_shape[0], -1)  # Inverted to match image coordinates
+    ax.set_title(f"All Centroids ({len(unit.axon_centroids) if unit.axon_centroids is not None else 0} pts)", 
+                color="#c9d1d9", fontsize=10, fontweight="bold")
+    ax.set_xlabel("Column (Y)", color="#8b949e", fontsize=9)
+    ax.set_ylabel("Row (X)", color="#8b949e", fontsize=9)
+    ax.set_aspect("equal")
+    
+    # =========================================================================
+    # ROW 1: Time slices and 3D scatter
+    # =========================================================================
 
     # Panel (1,0): STA time slice at soma t
-    ax = axes[1, 0]
+    ax = fig.add_subplot(gs_summary_row1[0])
+    style_ax(ax)
     if unit.sta_data is not None and unit.soma_t is not None:
         t_slice = unit.soma_t
         sta_slice = unit.sta_data[t_slice]
@@ -392,7 +547,8 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
     ax.set_ylabel("Row", color="#8b949e", fontsize=9)
 
     # Panel (1,1): Prediction time slice at soma t
-    ax = axes[1, 1]
+    ax = fig.add_subplot(gs_summary_row1[1])
+    style_ax(ax)
     if unit.prediction_data is not None and unit.soma_t is not None:
         t_slice = unit.soma_t
         pred_slice = unit.prediction_data[t_slice]
@@ -403,9 +559,7 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
     ax.set_ylabel("Row", color="#8b949e", fontsize=9)
 
     # Panel (1,2): Axon centroids 3D scatter
-    ax = axes[1, 2]
-    ax.remove()
-    ax = fig.add_subplot(3, 3, 6, projection="3d")
+    ax = fig.add_subplot(gs_summary_row1[2], projection="3d")
     ax.set_facecolor("#161b22")
 
     if unit.axon_centroids is not None and len(unit.axon_centroids) > 0:
@@ -430,12 +584,14 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
     ax.set_zlabel("Time", color="#8b949e", fontsize=8, labelpad=-2)
     ax.tick_params(colors="#8b949e", labelsize=7)
     ax.set_title("Axon Centroids 3D", color="#c9d1d9", fontsize=10, fontweight="bold", y=1.02)
+    
+    # =========================================================================
+    # ROW 2: Pathway fit, polar, text summary
+    # =========================================================================
 
     # Panel (2,0): AP pathway line fit
-    # The analysis computes: row = slope * column + intercept
-    # using linregress(column_indices, row_indices) on non-zero projection pixels.
-    # We use the slope/intercept STORED in HDF5 (not recomputed).
-    ax = axes[2, 0]
+    ax = fig.add_subplot(gs_summary_row2[0])
+    style_ax(ax)
     has_projection_data = False
 
     if unit.filtered_prediction is not None:
@@ -444,17 +600,14 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
 
         # Get non-zero coordinates (same as analysis pipeline)
         non_zero = np.where(projections > 0)
-        row_coords = non_zero[0]  # Row indices (what analysis calls y_coords)
-        col_coords = non_zero[1]  # Column indices (what analysis calls x_coords)
+        row_coords = non_zero[0]
+        col_coords = non_zero[1]
 
         if len(col_coords) > 0:
             has_projection_data = True
-            # Plot with column on x-axis, row on y-axis (matching image orientation)
             ax.scatter(col_coords, row_coords, c="#7ee787", s=10, alpha=0.5, 
                       label=f"Projection ({len(col_coords)} pts)")
 
-            # Plot fitted line using STORED slope/intercept from HDF5
-            # Analysis fit: row = slope * column + intercept
             if unit.pathway_slope is not None and unit.pathway_intercept is not None:
                 col_line = np.linspace(col_coords.min() - 5, col_coords.max() + 5, 100)
                 row_line = unit.pathway_slope * col_line + unit.pathway_intercept
@@ -462,7 +615,6 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
                 ax.plot(col_line, row_line, color="#ff6b6b", linewidth=2, linestyle="--",
                        label=f"HDF5 Fit (R²={r_sq:.3f})")
 
-    # Mark soma position (soma_x=row, soma_y=col)
     if unit.soma_x is not None and unit.soma_y is not None:
         ax.scatter([unit.soma_y], [unit.soma_x], c="#4dabf7", s=150, marker="*",
                   edgecolors="white", linewidths=2, label="Soma", zorder=10)
@@ -474,24 +626,20 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
     ax.set_title("AP Pathway Fit (from HDF5)", color="#c9d1d9", fontsize=10, fontweight="bold")
     ax.set_xlabel("Column", color="#8b949e", fontsize=9)
     ax.set_ylabel("Row", color="#8b949e", fontsize=9)
-    ax.invert_yaxis()  # Match image orientation: row 0 at top
+    ax.invert_yaxis()
     ax.set_aspect("equal")
 
     # Panel (2,1): Polar coordinate diagram
-    ax = axes[2, 1]
-    ax.remove()
-    ax = fig.add_subplot(3, 3, 8, projection="polar")
+    ax = fig.add_subplot(gs_summary_row2[1], projection="polar")
     ax.set_facecolor("#161b22")
 
     if unit.polar_radius is not None and unit.polar_angle is not None:
         ax.scatter([unit.polar_angle], [unit.polar_radius], c="#ff6b6b", s=200,
                   marker="o", edgecolors="white", linewidths=2, zorder=10)
 
-        # Draw radius line
         ax.plot([0, unit.polar_angle], [0, unit.polar_radius], color="#4dabf7",
                linewidth=2, alpha=0.7)
 
-        # Add quadrant label
         if unit.polar_quadrant:
             ax.annotate(
                 unit.polar_quadrant,
@@ -506,50 +654,209 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
     ax.set_title("Polar Coordinates", color="#c9d1d9", fontsize=10, fontweight="bold", y=1.08)
 
     # Panel (2,2): Text summary
-    ax = axes[2, 2]
+    ax = fig.add_subplot(gs_summary_row2[2])
+    style_ax(ax)
     ax.axis("off")
 
     summary_lines = [
         f"Unit: {unit.unit_id}",
         "",
-        "━━━ DVNT Position ━━━",
+        "--- DVNT Position ---",
         f"  DV: {unit.dv_position:.2f}" if unit.dv_position is not None and not np.isnan(unit.dv_position) else "  DV: N/A",
         f"  NT: {unit.nt_position:.2f}" if unit.nt_position is not None and not np.isnan(unit.nt_position) else "  NT: N/A",
         f"  LR: {unit.lr_position}" if unit.lr_position else "  LR: N/A",
         "",
-        "━━━ Refined Soma ━━━",
+        "--- Refined Soma ---",
         f"  t={unit.soma_t}, x={unit.soma_x}, y={unit.soma_y}" if unit.soma_t is not None else "  N/A",
         "",
-        "━━━ AIS ━━━",
+        "--- AIS ---",
         f"  t={unit.ais_t}, x={unit.ais_x}, y={unit.ais_y}" if unit.ais_t is not None else "  N/A",
         "",
-        "━━━ AP Pathway ━━━",
+        "--- AP Pathway ---",
         f"  Slope: {unit.pathway_slope:.4f}" if unit.pathway_slope is not None else "  Slope: N/A",
-        f"  R²: {unit.pathway_r_value**2:.4f}" if unit.pathway_r_value is not None else "  R²: N/A",
+        f"  R2: {unit.pathway_r_value**2:.4f}" if unit.pathway_r_value is not None else "  R2: N/A",
         f"  p-value: {unit.pathway_p_value:.2e}" if unit.pathway_p_value is not None else "  p-value: N/A",
         "",
-        "━━━ Polar Coordinates ━━━",
+        "--- Polar Coordinates ---",
         f"  Radius: {unit.polar_radius:.2f}" if unit.polar_radius is not None and not np.isnan(unit.polar_radius) else "  Radius: N/A",
-        f"  θ raw: {unit.polar_theta_deg_raw:.1f}°" if unit.polar_theta_deg_raw is not None and not np.isnan(unit.polar_theta_deg_raw) else "  θ raw: N/A",
-        f"  θ corrected: {unit.polar_theta_deg_corrected:.1f}°" if unit.polar_theta_deg_corrected is not None and not np.isnan(unit.polar_theta_deg_corrected) else "  θ corrected: N/A",
-        f"  Correction: {unit.polar_angle_correction:.1f}°" if unit.polar_angle_correction is not None and not np.isnan(unit.polar_angle_correction) else "  Correction: N/A",
+        f"  theta raw: {unit.polar_theta_deg_raw:.1f} deg" if unit.polar_theta_deg_raw is not None and not np.isnan(unit.polar_theta_deg_raw) else "  theta raw: N/A",
         f"  Quadrant: {unit.polar_quadrant}" if unit.polar_quadrant else "  Quadrant: N/A",
-        f"  Anatomical: {unit.polar_anatomical_quadrant}" if unit.polar_anatomical_quadrant else "  Anatomical: N/A",
     ]
 
     summary_text = "\n".join(summary_lines)
     ax.text(
         0.05, 0.95, summary_text,
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=9,
         fontfamily="monospace",
         verticalalignment="top",
         color="#c9d1d9",
         bbox=dict(boxstyle="round,pad=0.5", facecolor="#21262d", edgecolor="#30363d"),
     )
+    
+    # =========================================================================
+    # ROWS 3-5: Time-binned subplots (aligned columns)
+    # =========================================================================
+    
+    # Prepare binned data for the specified frame range
+    binned_sta = []
+    binned_pred = []
+    bin_labels = []
+    bin_ranges = []  # Store (start_idx, end_idx) for each bin
+    
+    for i in range(n_bins):
+        # Calculate frame indices relative to the specified range
+        bin_start = start_frame + i * bin_size
+        bin_end = min(start_frame + (i + 1) * bin_size, end_frame + 1)  # exclusive end
+        bin_ranges.append((bin_start, bin_end))
+        bin_labels.append(f"t={bin_start}-{bin_end-1}")
+        
+        # Bin STA
+        if unit.sta_data is not None and bin_end <= unit.sta_data.shape[0]:
+            binned_sta.append(np.mean(unit.sta_data[bin_start:bin_end], axis=0))
+        else:
+            binned_sta.append(None)
+        
+        # Bin prediction
+        if unit.prediction_data is not None and bin_end <= unit.prediction_data.shape[0]:
+            binned_pred.append(np.mean(unit.prediction_data[bin_start:bin_end], axis=0))
+        else:
+            binned_pred.append(None)
+    
+    # Get consistent color scales
+    sta_vmin, sta_vmax = None, None
+    pred_vmin, pred_vmax = 0, 1  # Prediction is normalized 0-1
+    
+    valid_sta = [b for b in binned_sta if b is not None]
+    if valid_sta:
+        sta_vmin = np.min([b.min() for b in valid_sta])
+        sta_vmax = np.max([b.max() for b in valid_sta])
+    
+    # Row 3: STA binned subplots
+    for i in range(n_bins):
+        ax = fig.add_subplot(gs_binned_sta[i])
+        style_ax(ax)
+        
+        bin_start, bin_end = bin_ranges[i]
+        
+        if binned_sta[i] is not None:
+            im = ax.imshow(binned_sta[i], cmap=NEURAL_CMAP, aspect="equal",
+                          vmin=sta_vmin, vmax=sta_vmax)
+            
+            # Mark soma if in this time bin
+            if unit.soma_t is not None and unit.soma_x is not None and unit.soma_y is not None:
+                if bin_start <= unit.soma_t < bin_end:
+                    ax.scatter([unit.soma_y], [unit.soma_x], c="#ff6b6b", s=60,
+                              marker="o", edgecolors="white", linewidths=1, zorder=10)
+        
+        ax.set_xticks([])
+        ax.set_yticks([])
+        
+        # Add time label at bottom
+        ax.set_xlabel(bin_labels[i], color="#8b949e", fontsize=8)
+        
+        # Add row label on first column
+        if i == 0:
+            ax.set_ylabel("STA", color="#c9d1d9", fontsize=10, fontweight="bold")
+    
+    # Row 4: Prediction binned subplots
+    for i in range(n_bins):
+        ax = fig.add_subplot(gs_binned_pred[i])
+        style_ax(ax)
+        
+        bin_start, bin_end = bin_ranges[i]
+        
+        if binned_pred[i] is not None:
+            im = ax.imshow(binned_pred[i], cmap=PRED_CMAP, aspect="equal",
+                          vmin=pred_vmin, vmax=pred_vmax)
+        
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlabel(bin_labels[i], color="#8b949e", fontsize=8)
+        
+        if i == 0:
+            ax.set_ylabel("Prediction", color="#c9d1d9", fontsize=10, fontweight="bold")
+    
+    # Row 5: Centroids binned subplots (show centroids that fall in each time bin)
+    # Create a grid for each bin showing where centroids are located
+    grid_shape = (65, 65) if unit.sta_data is None else unit.sta_data.shape[1:3]
+    
+    for i in range(n_bins):
+        ax = fig.add_subplot(gs_binned_cent[i])
+        style_ax(ax)
+        
+        bin_start, bin_end = bin_ranges[i]
+        
+        # Create a grid showing centroid positions in this time bin
+        centroid_grid = np.zeros(grid_shape)
+        
+        if unit.axon_centroids is not None and len(unit.axon_centroids) > 0:
+            for centroid in unit.axon_centroids:
+                t, x, y = int(centroid[0]), int(centroid[1]), int(centroid[2])
+                if bin_start <= t < bin_end:
+                    if 0 <= x < grid_shape[0] and 0 <= y < grid_shape[1]:
+                        centroid_grid[x, y] = 1
+        
+        # Show the centroid grid (binary: where centroids are located)
+        im = ax.imshow(centroid_grid, cmap="Oranges", aspect="equal", vmin=0, vmax=1)
+        
+        # Overlay the actual centroid points with coordinate labels
+        if unit.axon_centroids is not None and len(unit.axon_centroids) > 0:
+            bin_centroids = unit.axon_centroids[
+                (unit.axon_centroids[:, 0] >= bin_start) & 
+                (unit.axon_centroids[:, 0] < bin_end)
+            ]
+            if len(bin_centroids) > 0:
+                # Plot centroid markers
+                ax.scatter(bin_centroids[:, 2], bin_centroids[:, 1], 
+                          c="#ff6b6b", s=40, marker="o", edgecolors="white", 
+                          linewidths=1, zorder=10)
+                
+                # Add coordinate labels for each centroid
+                for centroid in bin_centroids:
+                    t, x, y = int(centroid[0]), int(centroid[1]), int(centroid[2])
+                    label = f"({x},{y})"
+                    # Position label slightly offset from the centroid
+                    ax.annotate(
+                        label,
+                        xy=(y, x),
+                        xytext=(3, 3),
+                        textcoords="offset points",
+                        fontsize=6,
+                        color="#7ee787",
+                        fontweight="bold",
+                        bbox=dict(boxstyle="round,pad=0.15", facecolor="#21262d", 
+                                 edgecolor="#30363d", alpha=0.8),
+                        zorder=11,
+                    )
+        
+        # Mark soma if in this time bin
+        if unit.soma_t is not None and unit.soma_x is not None and unit.soma_y is not None:
+            if bin_start <= unit.soma_t < bin_end:
+                ax.scatter([unit.soma_y], [unit.soma_x], c="#4dabf7", s=80,
+                          marker="*", edgecolors="white", linewidths=1.5, zorder=12)
+                # Label soma with "S" marker
+                ax.annotate(
+                    f"S({unit.soma_x},{unit.soma_y})",
+                    xy=(unit.soma_y, unit.soma_x),
+                    xytext=(3, -8),
+                    textcoords="offset points",
+                    fontsize=6,
+                    color="#4dabf7",
+                    fontweight="bold",
+                    bbox=dict(boxstyle="round,pad=0.15", facecolor="#21262d", 
+                             edgecolor="#30363d", alpha=0.8),
+                    zorder=13,
+                )
+        
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlabel(bin_labels[i], color="#8b949e", fontsize=8)
+        
+        if i == 0:
+            ax.set_ylabel("Centroids", color="#c9d1d9", fontsize=10, fontweight="bold")
 
-    plt.tight_layout(rect=[0, 0.02, 1, 0.96])
-    plt.savefig(output_path, dpi=150, facecolor="#0d1117", edgecolor="none")
+    plt.savefig(output_path, dpi=150, facecolor="#0d1117", edgecolor="none", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -558,23 +865,49 @@ def plot_unit_summary(unit: UnitAPData, output_path: Path) -> None:
 # =============================================================================
 
 
-def plot_recording_pathways(recording: RecordingAPData, output_path: Path) -> None:
+def plot_recording_pathways(
+    recording: RecordingAPData,
+    output_path: Path,
+    r2_threshold: float = 0.3,
+    cell_type_filter: Optional[str] = "rgc",
+) -> None:
     """
-    Plot all AP pathways with their intersection point.
+    Plot AP pathways used for optic nerve head localization.
+
+    Only shows RGC units with R² >= threshold (the ones actually used for
+    calculating the intersection point).
 
     Args:
         recording: RecordingAPData with all unit data
         output_path: Path to save the figure
+        r2_threshold: Minimum R² to include pathway (default: 0.5)
+        cell_type_filter: Only show this cell type (default: "rgc", None = all)
     """
-    fig, ax = plt.subplots(figsize=(12, 10))
+    fig, ax = plt.subplots(figsize=(10, 10))  # Square figure for equal aspect
     fig.patch.set_facecolor("#0d1117")
     ax.set_facecolor("#161b22")
 
-    # Collect valid pathways
+    # Collect valid pathways (filtered by R² threshold and cell type)
     valid_units = []
+    excluded_r2 = 0
+    excluded_type = 0
     for unit in recording.units.values():
-        if unit.pathway_slope is not None and unit.pathway_r_value is not None:
-            valid_units.append(unit)
+        if unit.pathway_slope is None or unit.pathway_r_value is None:
+            continue
+        
+        # Filter by cell type
+        if cell_type_filter is not None:
+            if unit.cell_type is None or unit.cell_type.lower() != cell_type_filter.lower():
+                excluded_type += 1
+                continue
+        
+        # Filter by R² threshold
+        r_squared = unit.pathway_r_value ** 2
+        if r_squared < r2_threshold:
+            excluded_r2 += 1
+            continue
+        
+        valid_units.append(unit)
 
     if not valid_units:
         ax.text(0.5, 0.5, "No valid AP pathways found",
@@ -597,21 +930,74 @@ def plot_recording_pathways(recording: RecordingAPData, output_path: Path) -> No
     else:
         x_min, x_max, y_min, y_max = 0, 65, 0, 65
 
-    # Plot each pathway
+    # Plot each pathway as a ray from soma projection toward intersection
     cmap = plt.cm.RdYlGn
+    intersection_col = recording.intersection_y  # intersection column (plot x-axis)
+    intersection_row = recording.intersection_x  # intersection row (plot y-axis)
+    
     for unit in valid_units:
         r_squared = unit.pathway_r_value ** 2 if unit.pathway_r_value else 0
         color = cmap(r_squared)
-
-        # Draw pathway line
-        y_line = np.linspace(y_min, y_max, 100)
-        x_line = unit.pathway_slope * y_line + unit.pathway_intercept
-        ax.plot(y_line, x_line, color=color, linewidth=1.5, alpha=0.7)
-
+        
+        slope = unit.pathway_slope
+        intercept = unit.pathway_intercept
+        
+        # Skip if no soma position
+        if unit.soma_x is None or unit.soma_y is None:
+            continue
+        
+        soma_col = unit.soma_y  # soma column (plot x-axis)
+        soma_row = unit.soma_x  # soma row (plot y-axis)
+        
+        # Calculate perpendicular projection using vector method
+        # Line passes through point A = (0, intercept) with direction d = (1, slope)
+        # Soma point P = (soma_col, soma_row)
+        # Vector AP = P - A
+        # Projection point = A + (AP · d / d · d) * d
+        
+        A = np.array([0.0, intercept])
+        P = np.array([soma_col, soma_row])
+        d = np.array([1.0, slope])  # direction vector of line
+        
+        AP = P - A
+        t = np.dot(AP, d) / np.dot(d, d)  # parameter along line
+        proj_point = A + t * d
+        
+        proj_col, proj_row = proj_point[0], proj_point[1]
+        
+        # Draw perpendicular line from soma to its projection on trajectory (dotted)
+        ax.plot([soma_col, proj_col], [soma_row, proj_row],
+                color=color, linewidth=1.5, linestyle=':', alpha=0.6)
+        
+        # Mark projection point
+        ax.scatter([proj_col], [proj_row], c=[color], s=40,
+                  marker='s', edgecolors='white', linewidths=1, zorder=4)
+        
+        # Draw solid line along the fitted trajectory
+        # The line follows the linear fit, extending in both directions
+        d_unit = d / np.linalg.norm(d)  # unit direction vector along line
+        
+        # Determine which direction goes toward intersection (if available)
+        if intersection_col is not None and intersection_row is not None:
+            to_intersection = np.array([intersection_col - proj_col, intersection_row - proj_row])
+            if np.dot(to_intersection, d_unit) < 0:
+                d_unit = -d_unit  # flip so positive direction is toward intersection
+        
+        # Draw solid line segment along the trajectory (from behind soma to ahead)
+        line_behind = proj_point - d_unit * 10  # extend behind
+        line_ahead = proj_point + d_unit * 25   # extend ahead toward intersection
+        
+        ax.plot([line_behind[0], line_ahead[0]], [line_behind[1], line_ahead[1]],
+                color=color, linewidth=2, linestyle='-', alpha=0.8, zorder=3)
+        
+        # Add arrowhead at the end to show direction
+        ax.annotate('', xy=(line_ahead[0], line_ahead[1]), 
+                   xytext=(line_ahead[0] - d_unit[0]*3, line_ahead[1] - d_unit[1]*3),
+                   arrowprops=dict(arrowstyle='->', color=color, lw=2, alpha=0.9))
+        
         # Mark soma position
-        if unit.soma_x is not None and unit.soma_y is not None:
-            ax.scatter([unit.soma_y], [unit.soma_x], c=[color], s=80,
-                      edgecolors="white", linewidths=1, zorder=5)
+        ax.scatter([soma_col], [soma_row], c=[color], s=100,
+                  edgecolors="white", linewidths=2, zorder=5)
 
     # Plot intersection point
     if recording.intersection_x is not None and recording.intersection_y is not None:
@@ -628,10 +1014,18 @@ def plot_recording_pathways(recording: RecordingAPData, output_path: Path) -> No
 
     ax.set_xlim(y_min, y_max)
     ax.set_ylim(x_min, x_max)
-    ax.set_aspect("equal")
+    ax.set_aspect("equal", adjustable="box")  # Force equal aspect ratio
 
-    ax.set_title(f"AP Pathways - {recording.recording_name}\n({len(valid_units)} units)",
-                color="#f0f6fc", fontsize=14, fontweight="bold")
+    # Build title with filter info
+    filter_info = f"R² ≥ {r2_threshold}"
+    if cell_type_filter:
+        filter_info = f"{cell_type_filter.upper()}, {filter_info}"
+    
+    ax.set_title(
+        f"AP Pathways Used for Optic Nerve Head Localization\n"
+        f"{recording.recording_name} | {len(valid_units)} units ({filter_info})",
+        color="#f0f6fc", fontsize=14, fontweight="bold"
+    )
     ax.set_xlabel("Column (Y)", color="#c9d1d9", fontsize=12)
     ax.set_ylabel("Row (X)", color="#c9d1d9", fontsize=12)
     ax.tick_params(colors="#8b949e")
@@ -776,7 +1170,7 @@ def has_ap_tracking(hdf5_path: Path) -> bool:
 
 def run_ap_tracking_on_file(
     source_path: Path,
-    r2_threshold: float = 0.2,
+    r2_threshold: float = 0.3,
 ) -> Path:
     """
     Run AP tracking on a file, copying to export folder first.
@@ -825,7 +1219,7 @@ def visualize_ap_tracking(
     output_dir: Optional[Path] = None,
     max_units: Optional[int] = None,
     run_tracking: bool = False,
-    r2_threshold: float = 0.2,
+    r2_threshold: float = 0.3,
 ) -> Path:
     """
     Generate all visualizations for an AP tracking result file.
@@ -877,7 +1271,7 @@ def visualize_ap_tracking(
     print("Generating recording summary plots...")
 
     pathways_path = recording_dir / "recording_summary.png"
-    plot_recording_pathways(recording, pathways_path)
+    plot_recording_pathways(recording, pathways_path, r2_threshold=r2_threshold)
     print(f"  -> {pathways_path.name}")
 
     polar_path = recording_dir / "polar_summary.png"
@@ -944,14 +1338,14 @@ if __name__ == "__main__":
     # ==========================================================================
     
     # Option 1: Direct path to HDF5 file (will auto-run AP tracking if needed)
-    INPUT_FILE = "Projects/ap_trace_hdf5/export/2024.05.23-12.05.03-Rec.h5"
+    INPUT_FILE = "Projects/ap_trace_hdf5/export/2024.03.25-13.44.04-Rec.h5"
     
     # Option 2: Use file in export folder (already processed)
     # INPUT_FILE = "Projects/ap_trace_hdf5/export/2024.05.23-12.05.03-Rec.h5"
     
     # Settings
     MAX_UNITS = None        # None = all units, or set a number like 5
-    R2_THRESHOLD = 0.2      # R² threshold for pathway fitting
+    R2_THRESHOLD = 0.8      # R² threshold for pathway fitting
     RUN_TRACKING = False    # True = force re-run AP tracking
     
     # ==========================================================================
