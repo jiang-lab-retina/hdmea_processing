@@ -31,6 +31,11 @@ from hdmea.features.eimage_sta import (
     EImageSTAConfig,
     EImageSTAResult,
 )
+from hdmea.features.dsgc_direction import (
+    section_by_direction,
+    DirectionSectionResult,
+    DIRECTION_LIST,
+)
 
 __all__ = [
     "FeatureRegistry",
@@ -50,5 +55,8 @@ __all__ = [
     "compute_eimage_sta",
     "EImageSTAConfig",
     "EImageSTAResult",
+    "section_by_direction",
+    "DirectionSectionResult",
+    "DIRECTION_LIST",
 ]
 

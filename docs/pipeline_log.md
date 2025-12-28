@@ -5,6 +5,54 @@ Entries are in reverse chronological order (newest first).
 
 ---
 
+## [2025-12-27] DSGC Direction Sectioning
+
+**Change**: Added `section_by_direction()` function to section spike times by moving bar direction for direction-selective ganglion cell (DSGC) analysis.
+
+**Key Features**:
+- Section spikes by 8 motion directions × 3 repetitions = 24 trials
+- Per-pixel on/off timing from pre-computed dictionary
+- Automatic cell center conversion from 15×15 STA grid to 300×300 stimulus space
+- Configurable padding around on/off windows (default: 10 frames)
+- Safe output with `force` parameter and `output_path` option for testing
+- Filter by `unit_ids` parameter for selective processing
+
+**Affected**:
+- `hdmea.features.dsgc_direction` - new module with `section_by_direction()` function
+- `hdmea.features.__init__` - exports `section_by_direction`, `DirectionSectionResult`, `DIRECTION_LIST`
+
+**HDF5 Structure**:
+```
+units/{unit_id}/
+└── spike_times_sectioned/
+    └── moving_h_bar_s5_d8_3x/
+        ├── full_spike_times      # UNCHANGED (source data)
+        └── direction_section/
+            └── {direction}/      # "0", "45", "90", ..., "315"
+                ├── trials/
+                │   ├── 0         # int64[] spike samples for rep 1
+                │   ├── 1         # int64[] spike samples for rep 2
+                │   └── 2         # int64[] spike samples for rep 3
+                └── section_bounds  # int64[3,2] [start,end] per trial
+```
+
+**Usage**:
+```python
+from hdmea.features import section_by_direction
+
+result = section_by_direction(
+    "recording.h5",
+    padding_frames=10,      # Frames before/after on/off window
+    force=True,             # Overwrite existing data
+    output_path="export/",  # Copy source first (for testing)
+)
+print(f"Processed {result.units_processed} units in {result.elapsed_seconds:.1f}s")
+```
+
+**Spec**: `specs/011-dsgc-direction-section/`
+
+---
+
 ## [2025-12-18] Spike Triggered Average (STA) Computation
 
 **Change**: Added `compute_sta()` function to compute Spike Triggered Average from noise movie stimuli for receptive field mapping.
