@@ -710,10 +710,22 @@ def compute_ap_tracking(
                     continue
                 
                 cell_type = root[auto_label_path][()]
+                # Handle different storage formats: bytes, numpy array, or string
                 if isinstance(cell_type, bytes):
                     cell_type = cell_type.decode('utf-8')
+                elif isinstance(cell_type, np.ndarray):
+                    # Session stores strings as 1-element arrays
+                    if cell_type.size > 0:
+                        val = cell_type.flat[0]
+                        if isinstance(val, bytes):
+                            cell_type = val.decode('utf-8')
+                        else:
+                            cell_type = str(val)
+                    else:
+                        skipped_no_label += 1
+                        continue
                 
-                if cell_type.lower() == cell_type_filter.lower():
+                if str(cell_type).lower() == cell_type_filter.lower():
                     unit_ids.append(uid)
                 else:
                     skipped_wrong_type += 1

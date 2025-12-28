@@ -31,6 +31,11 @@ from hdmea.pipeline.session import (
     create_session,
 )
 
+from hdmea.pipeline.loader import (
+    load_session_from_hdf5,
+    load_hdf5_to_session,  # Alias for backwards compatibility
+)
+
 from hdmea.io.section_time import add_section_time
 
 __all__ = [
@@ -53,5 +58,8 @@ __all__ = [
     "PipelineSession",
     "SaveState",
     "create_session",
+    # Universal HDF5 loader
+    "load_session_from_hdf5",
+    "load_hdf5_to_session",
 ]
 

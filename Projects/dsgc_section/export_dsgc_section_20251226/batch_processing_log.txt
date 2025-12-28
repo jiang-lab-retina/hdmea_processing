@@ -1,0 +1,2298 @@
+DSGC Direction Sectioning - Batch Processing Log
+============================================================
+
+Timestamp: 2025-12-27 21:43:45
+Source: M:\Python_Project\Data_Processing_2027\Projects\ap_trace_hdf5\export_ap_tracking_20251226
+Export: M:\Python_Project\Data_Processing_2027\Projects\dsgc_section\export_dsgc_section_20251226
+Movie: moving_h_bar_s5_d8_3x
+On/off dict: M:\Python_Project\Data_Processing_2025\Design_Stimulation_Pattern\Data\Stimulations\moving_h_bar_s5_d8_3x_on_off_dict_hd.pkl
+Padding frames: 10
+
+Total time: 2802.8s
+Successful: 358
+Skipped: 0
+Failed: 0
+
+------------------------------------------------------------
+File Details:
+------------------------------------------------------------
+
+2024.02.26-10.53.19-Rec.h5
+  Status: SUCCESS
+  Units processed: 11
+  Units skipped: 0
+  Time: 1.4s
+
+2024.02.26-11.44.42-Rec.h5
+  Status: SUCCESS
+  Units processed: 18
+  Units skipped: 0
+  Time: 1.1s
+
+2024.02.26-12.23.03-Rec.h5
+  Status: SUCCESS
+  Units processed: 21
+  Units skipped: 0
+  Time: 1.4s
+
+2024.02.26-13.44.15-Rec.h5
+  Status: SUCCESS
+  Units processed: 17
+  Units skipped: 0
+  Time: 1.5s
+
+2024.02.26-14.21.41-Rec.h5
+  Status: SUCCESS
+  Units processed: 23
+  Units skipped: 0
+  Time: 2.1s
+
+2024.02.28-10.42.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 187
+  Units skipped: 0
+  Time: 11.1s
+
+2024.02.28-11.19.39-Rec.h5
+  Status: SUCCESS
+  Units processed: 85
+  Units skipped: 0
+  Time: 6.2s
+
+2024.02.28-11.57.32-Rec.h5
+  Status: SUCCESS
+  Units processed: 185
+  Units skipped: 1
+  Skipped units: unit_067
+  Time: 11.4s
+
+2024.02.28-13.50.36-Rec.h5
+  Status: SUCCESS
+  Units processed: 27
+  Units skipped: 0
+  Time: 2.4s
+
+2024.03.01-10.28.08-Rec.h5
+  Status: SUCCESS
+  Units processed: 286
+  Units skipped: 0
+  Time: 10.1s
+
+2024.03.01-11.09.01-Rec.h5
+  Status: SUCCESS
+  Units processed: 153
+  Units skipped: 0
+  Time: 8.7s
+
+2024.03.01-13.13.16-Rec.h5
+  Status: SUCCESS
+  Units processed: 266
+  Units skipped: 0
+  Time: 16.9s
+
+2024.03.01-13.48.58-Rec.h5
+  Status: SUCCESS
+  Units processed: 110
+  Units skipped: 0
+  Time: 6.7s
+
+2024.03.01-14.40.14-Rec.h5
+  Status: SUCCESS
+  Units processed: 152
+  Units skipped: 0
+  Time: 8.7s
+
+2024.03.05-10.07.59-Rec.h5
+  Status: SUCCESS
+  Units processed: 55
+  Units skipped: 0
+  Time: 2.4s
+
+2024.03.05-10.41.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 37
+  Units skipped: 0
+  Time: 2.7s
+
+2024.03.05-11.16.27-Rec.h5
+  Status: SUCCESS
+  Units processed: 54
+  Units skipped: 0
+  Time: 3.3s
+
+2024.03.05-11.51.39-Rec.h5
+  Status: SUCCESS
+  Units processed: 17
+  Units skipped: 0
+  Time: 0.7s
+
+2024.03.05-12.27.13-Rec.h5
+  Status: SUCCESS
+  Units processed: 214
+  Units skipped: 0
+  Time: 14.3s
+
+2024.03.05-13.03.51-Rec.h5
+  Status: SUCCESS
+  Units processed: 16
+  Units skipped: 0
+  Time: 2.0s
+
+2024.03.05-13.37.13-Rec.h5
+  Status: SUCCESS
+  Units processed: 36
+  Units skipped: 1
+  Skipped units: unit_036
+  Time: 1.2s
+
+2024.03.05-14.13.33-Rec.h5
+  Status: SUCCESS
+  Units processed: 239
+  Units skipped: 3
+  Skipped units: unit_077, unit_078, unit_225
+  Time: 9.3s
+
+2024.03.05-14.49.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 5
+  Units skipped: 0
+  Time: 0.6s
+
+2024.03.05-15.26.36-Rec.h5
+  Status: SUCCESS
+  Units processed: 147
+  Units skipped: 24
+  Skipped units: unit_007, unit_008, unit_013, unit_019, unit_020, unit_029, unit_040, unit_048, unit_054, unit_058, unit_061, unit_063, unit_066, unit_070, unit_076, unit_078, unit_090, unit_093, unit_100, unit_101, unit_104, unit_154, unit_163, unit_165
+  Time: 9.0s
+
+2024.03.07-10.12.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 168
+  Units skipped: 0
+  Time: 8.4s
+
+2024.03.07-10.46.01-Rec.h5
+  Status: SUCCESS
+  Units processed: 351
+  Units skipped: 0
+  Time: 19.4s
+
+2024.03.07-11.26.07-Rec.h5
+  Status: SUCCESS
+  Units processed: 128
+  Units skipped: 0
+  Time: 5.3s
+
+2024.03.07-12.00.14-Rec.h5
+  Status: SUCCESS
+  Units processed: 351
+  Units skipped: 0
+  Time: 18.4s
+
+2024.03.07-12.33.58-Rec.h5
+  Status: SUCCESS
+  Units processed: 125
+  Units skipped: 0
+  Time: 7.7s
+
+2024.03.07-13.08.00-Rec.h5
+  Status: SUCCESS
+  Units processed: 15
+  Units skipped: 0
+  Time: 0.7s
+
+2024.03.07-13.44.26-Rec.h5
+  Status: SUCCESS
+  Units processed: 254
+  Units skipped: 2
+  Skipped units: unit_132, unit_134
+  Time: 15.2s
+
+2024.03.14-10.47.08-Rec.h5
+  Status: SUCCESS
+  Units processed: 14
+  Units skipped: 0
+  Time: 2.0s
+
+2024.03.14-12.24.26-Rec.h5
+  Status: SUCCESS
+  Units processed: 311
+  Units skipped: 0
+  Time: 18.6s
+
+2024.03.14-13.00.17-Rec.h5
+  Status: SUCCESS
+  Units processed: 91
+  Units skipped: 0
+  Time: 5.4s
+
+2024.03.14-14.06.50-Rec.h5
+  Status: SUCCESS
+  Units processed: 56
+  Units skipped: 0
+  Time: 3.2s
+
+2024.03.20-10.08.11-Rec.h5
+  Status: SUCCESS
+  Units processed: 44
+  Units skipped: 0
+  Time: 3.6s
+
+2024.03.20-11.17.35-Rec.h5
+  Status: SUCCESS
+  Units processed: 42
+  Units skipped: 0
+  Time: 3.1s
+
+2024.03.20-13.41.33-Rec.h5
+  Status: SUCCESS
+  Units processed: 36
+  Units skipped: 0
+  Time: 1.2s
+
+2024.03.25-12.03.08-Rec.h5
+  Status: SUCCESS
+  Units processed: 29
+  Units skipped: 0
+  Time: 1.4s
+
+2024.03.25-12.36.27-Rec.h5
+  Status: SUCCESS
+  Units processed: 110
+  Units skipped: 0
+  Time: 6.7s
+
+2024.03.25-13.11.11-Rec.h5
+  Status: SUCCESS
+  Units processed: 19
+  Units skipped: 0
+  Time: 0.8s
+
+2024.03.25-13.44.04-Rec.h5
+  Status: SUCCESS
+  Units processed: 82
+  Units skipped: 0
+  Time: 6.1s
+
+2024.03.25-14.24.51-Rec.h5
+  Status: SUCCESS
+  Units processed: 211
+  Units skipped: 0
+  Time: 13.2s
+
+2024.03.25-14.59.16-Rec.h5
+  Status: SUCCESS
+  Units processed: 280
+  Units skipped: 0
+  Time: 11.3s
+
+2024.03.25-15.38.58-Rec.h5
+  Status: SUCCESS
+  Units processed: 64
+  Units skipped: 0
+  Time: 4.2s
+
+2024.03.28-09.44.38-Rec.h5
+  Status: SUCCESS
+  Units processed: 252
+  Units skipped: 0
+  Time: 15.0s
+
+2024.03.28-10.53.26-Rec.h5
+  Status: SUCCESS
+  Units processed: 52
+  Units skipped: 0
+  Time: 3.7s
+
+2024.03.28-11.28.00-Rec.h5
+  Status: SUCCESS
+  Units processed: 214
+  Units skipped: 0
+  Time: 5.5s
+
+2024.03.28-12.04.19-Rec.h5
+  Status: SUCCESS
+  Units processed: 101
+  Units skipped: 40
+  Skipped units: unit_008, unit_012, unit_015, unit_017, unit_021, unit_022, unit_027, unit_032, unit_033, unit_039, unit_041, unit_044, unit_049, unit_054, unit_056, unit_060, unit_064, unit_065, unit_069, unit_075, unit_080, unit_081, unit_083, unit_084, unit_091, unit_093, unit_099, unit_102, unit_104, unit_108, unit_112, unit_117, unit_120, unit_121, unit_128, unit_129, unit_131, unit_135, unit_138, unit_140
+  Time: 6.8s
+
+2024.03.28-13.24.58-Rec.h5
+  Status: SUCCESS
+  Units processed: 47
+  Units skipped: 0
+  Time: 2.2s
+
+2024.03.28-13.59.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 38
+  Units skipped: 0
+  Time: 0.6s
+
+2024.03.28-15.15.29-Rec.h5
+  Status: SUCCESS
+  Units processed: 90
+  Units skipped: 0
+  Time: 5.3s
+
+2024.04.02-09.37.24-Rec.h5
+  Status: SUCCESS
+  Units processed: 129
+  Units skipped: 46
+  Skipped units: unit_004, unit_007, unit_012, unit_030, unit_031, unit_034, unit_035, unit_041, unit_044, unit_048, unit_055, unit_066, unit_069, unit_070, unit_071, unit_072, unit_077, unit_078, unit_082, unit_088, unit_090, unit_091, unit_092, unit_093, unit_094, unit_095, unit_102, unit_112, unit_114, unit_116, unit_117, unit_120, unit_123, unit_126, unit_129, unit_130, unit_131, unit_137, unit_140, unit_144, unit_149, unit_162, unit_163, unit_167, unit_168, unit_170
+  Time: 9.1s
+
+2024.04.02-10.25.10-Rec.h5
+  Status: SUCCESS
+  Units processed: 83
+  Units skipped: 0
+  Time: 4.5s
+
+2024.04.02-12.07.50-Rec.h5
+  Status: SUCCESS
+  Units processed: 65
+  Units skipped: 0
+  Time: 4.6s
+
+2024.04.02-13.29.44-Rec.h5
+  Status: SUCCESS
+  Units processed: 65
+  Units skipped: 0
+  Time: 3.7s
+
+2024.04.03-10.21.31-Rec.h5
+  Status: SUCCESS
+  Units processed: 177
+  Units skipped: 0
+  Time: 10.5s
+
+2024.04.03-11.51.46-Rec.h5
+  Status: SUCCESS
+  Units processed: 72
+  Units skipped: 1
+  Skipped units: unit_010
+  Time: 5.0s
+
+2024.04.03-13.26.54-Rec.h5
+  Status: SUCCESS
+  Units processed: 100
+  Units skipped: 2
+  Skipped units: unit_018, unit_020
+  Time: 4.3s
+
+2024.04.03-14.01.03-Rec.h5
+  Status: SUCCESS
+  Units processed: 16
+  Units skipped: 0
+  Time: 1.0s
+
+2024.04.03-14.34.58-Rec.h5
+  Status: SUCCESS
+  Units processed: 59
+  Units skipped: 0
+  Time: 0.8s
+
+2024.04.03-15.11.47-Rec.h5
+  Status: SUCCESS
+  Units processed: 117
+  Units skipped: 0
+  Time: 7.0s
+
+2024.04.05-10.22.17-Rec.h5
+  Status: SUCCESS
+  Units processed: 144
+  Units skipped: 0
+  Time: 7.0s
+
+2024.04.05-11.44.19-Rec.h5
+  Status: SUCCESS
+  Units processed: 96
+  Units skipped: 1
+  Skipped units: unit_004
+  Time: 6.6s
+
+2024.04.05-13.03.38-Rec.h5
+  Status: SUCCESS
+  Units processed: 34
+  Units skipped: 4
+  Skipped units: unit_002, unit_009, unit_019, unit_035
+  Time: 2.1s
+
+2024.04.05-14.02.42-Rec.h5
+  Status: SUCCESS
+  Units processed: 53
+  Units skipped: 0
+  Time: 2.6s
+
+2024.04.08-10.00.00-Rec.h5
+  Status: SUCCESS
+  Units processed: 180
+  Units skipped: 0
+  Time: 9.8s
+
+2024.04.08-11.49.20-Rec.h5
+  Status: SUCCESS
+  Units processed: 62
+  Units skipped: 0
+  Time: 3.8s
+
+2024.04.08-13.11.33-Rec.h5
+  Status: SUCCESS
+  Units processed: 27
+  Units skipped: 0
+  Time: 1.8s
+
+2024.04.08-14.41.15-Rec.h5
+  Status: SUCCESS
+  Units processed: 217
+  Units skipped: 0
+  Time: 13.8s
+
+2024.04.11-11.22.37-Rec.h5
+  Status: SUCCESS
+  Units processed: 47
+  Units skipped: 0
+  Time: 3.6s
+
+2024.04.11-12.00.29-Rec.h5
+  Status: SUCCESS
+  Units processed: 149
+  Units skipped: 0
+  Time: 9.5s
+
+2024.04.11-12.35.31-Rec.h5
+  Status: SUCCESS
+  Units processed: 40
+  Units skipped: 0
+  Time: 3.2s
+
+2024.04.11-13.33.55-Rec.h5
+  Status: SUCCESS
+  Units processed: 116
+  Units skipped: 0
+  Time: 7.2s
+
+2024.04.11-14.25.06-Rec.h5
+  Status: SUCCESS
+  Units processed: 46
+  Units skipped: 0
+  Time: 3.4s
+
+2024.04.11-14.58.37-Rec.h5
+  Status: SUCCESS
+  Units processed: 11
+  Units skipped: 0
+  Time: 0.3s
+
+2024.04.11-15.29.42-Rec.h5
+  Status: SUCCESS
+  Units processed: 134
+  Units skipped: 0
+  Time: 9.2s
+
+2024.04.17-11.09.53-Rec.h5
+  Status: SUCCESS
+  Units processed: 223
+  Units skipped: 0
+  Time: 13.7s
+
+2024.04.17-12.14.24-Rec.h5
+  Status: SUCCESS
+  Units processed: 253
+  Units skipped: 0
+  Time: 14.7s
+
+2024.04.17-13.22.46-Rec.h5
+  Status: SUCCESS
+  Units processed: 37
+  Units skipped: 0
+  Time: 3.0s
+
+2024.04.17-14.00.40-Rec.h5
+  Status: SUCCESS
+  Units processed: 31
+  Units skipped: 0
+  Time: 0.6s
+
+2024.04.17-14.37.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 132
+  Units skipped: 0
+  Time: 10.4s
+
+2024.04.19-10.26.53-Rec.h5
+  Status: SUCCESS
+  Units processed: 73
+  Units skipped: 0
+  Time: 4.3s
+
+2024.04.19-11.02.00-Rec.h5
+  Status: SUCCESS
+  Units processed: 56
+  Units skipped: 0
+  Time: 2.1s
+
+2024.04.19-11.57.10-Rec.h5
+  Status: SUCCESS
+  Units processed: 20
+  Units skipped: 6
+  Skipped units: unit_001, unit_008, unit_010, unit_013, unit_014, unit_025
+  Time: 1.4s
+
+2024.04.19-13.14.19-Rec.h5
+  Status: SUCCESS
+  Units processed: 291
+  Units skipped: 0
+  Time: 10.1s
+
+2024.04.19-14.05.09-Rec.h5
+  Status: SUCCESS
+  Units processed: 106
+  Units skipped: 0
+  Time: 7.0s
+
+2024.04.19-14.39.30-Rec.h5
+  Status: SUCCESS
+  Units processed: 138
+  Units skipped: 0
+  Time: 9.2s
+
+2024.05.14-14.12.53-Rec.h5
+  Status: SUCCESS
+  Units processed: 93
+  Units skipped: 0
+  Time: 5.7s
+
+2024.05.14-14.44.53-Rec.h5
+  Status: SUCCESS
+  Units processed: 167
+  Units skipped: 1
+  Skipped units: unit_105
+  Time: 8.7s
+
+2024.05.14-15.18.30-Rec.h5
+  Status: SUCCESS
+  Units processed: 163
+  Units skipped: 0
+  Time: 10.1s
+
+2024.05.21-11.53.15-Rec.h5
+  Status: SUCCESS
+  Units processed: 196
+  Units skipped: 0
+  Time: 15.5s
+
+2024.05.21-12.31.12-Rec.h5
+  Status: SUCCESS
+  Units processed: 138
+  Units skipped: 0
+  Time: 6.2s
+
+2024.05.21-13.02.22-Rec.h5
+  Status: SUCCESS
+  Units processed: 135
+  Units skipped: 0
+  Time: 8.2s
+
+2024.05.21-13.34.04-Rec.h5
+  Status: SUCCESS
+  Units processed: 132
+  Units skipped: 0
+  Time: 8.4s
+
+2024.05.21-14.06.58-Rec.h5
+  Status: SUCCESS
+  Units processed: 21
+  Units skipped: 3
+  Skipped units: unit_013, unit_022, unit_024
+  Time: 0.6s
+
+2024.05.22-09.42.35-Rec.h5
+  Status: SUCCESS
+  Units processed: 202
+  Units skipped: 0
+  Time: 6.9s
+
+2024.05.22-10.18.00-Rec.h5
+  Status: SUCCESS
+  Units processed: 174
+  Units skipped: 1
+  Skipped units: unit_022
+  Time: 9.8s
+
+2024.05.22-10.50.51-Rec.h5
+  Status: SUCCESS
+  Units processed: 102
+  Units skipped: 21
+  Skipped units: unit_013, unit_016, unit_022, unit_025, unit_033, unit_035, unit_043, unit_049, unit_054, unit_057, unit_060, unit_073, unit_075, unit_083, unit_089, unit_091, unit_099, unit_103, unit_107, unit_108, unit_123
+  Time: 6.6s
+
+2024.05.22-11.35.54-Rec.h5
+  Status: SUCCESS
+  Units processed: 82
+  Units skipped: 1
+  Skipped units: unit_071
+  Time: 4.9s
+
+2024.05.22-12.43.26-Rec.h5
+  Status: SUCCESS
+  Units processed: 103
+  Units skipped: 0
+  Time: 7.0s
+
+2024.05.22-13.20.15-Rec.h5
+  Status: SUCCESS
+  Units processed: 134
+  Units skipped: 2
+  Skipped units: unit_123, unit_124
+  Time: 7.9s
+
+2024.05.22-14.04.00-Rec.h5
+  Status: SUCCESS
+  Units processed: 214
+  Units skipped: 0
+  Time: 10.5s
+
+2024.05.22-14.46.34-Rec.h5
+  Status: SUCCESS
+  Units processed: 109
+  Units skipped: 20
+  Skipped units: unit_004, unit_009, unit_014, unit_021, unit_027, unit_031, unit_036, unit_042, unit_047, unit_053, unit_062, unit_068, unit_075, unit_080, unit_082, unit_085, unit_093, unit_098, unit_112, unit_123
+  Time: 10.0s
+
+2024.05.23-09.36.10-Rec.h5
+  Status: SUCCESS
+  Units processed: 72
+  Units skipped: 1
+  Skipped units: unit_072
+  Time: 4.4s
+
+2024.05.23-10.09.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 159
+  Units skipped: 0
+  Time: 7.1s
+
+2024.05.23-10.42.21-Rec.h5
+  Status: SUCCESS
+  Units processed: 176
+  Units skipped: 0
+  Time: 16.4s
+
+2024.05.23-11.21.36-Rec.h5
+  Status: SUCCESS
+  Units processed: 90
+  Units skipped: 1
+  Skipped units: unit_010
+  Time: 5.9s
+
+2024.05.23-12.05.03-Rec.h5
+  Status: SUCCESS
+  Units processed: 33
+  Units skipped: 0
+  Time: 2.1s
+
+2024.05.23-12.37.42-Rec.h5
+  Status: SUCCESS
+  Units processed: 89
+  Units skipped: 0
+  Time: 7.2s
+
+2024.05.23-13.10.24-Rec.h5
+  Status: SUCCESS
+  Units processed: 175
+  Units skipped: 0
+  Time: 9.2s
+
+2024.05.23-13.53.17-Rec.h5
+  Status: SUCCESS
+  Units processed: 135
+  Units skipped: 3
+  Skipped units: unit_135, unit_136, unit_137
+  Time: 5.7s
+
+2024.05.23-14.26.39-Rec.h5
+  Status: SUCCESS
+  Units processed: 114
+  Units skipped: 0
+  Time: 6.7s
+
+2024.06.04-09.45.42-Rec.h5
+  Status: SUCCESS
+  Units processed: 31
+  Units skipped: 3
+  Skipped units: unit_031, unit_033, unit_034
+  Time: 2.3s
+
+2024.06.04-10.43.27-Rec.h5
+  Status: SUCCESS
+  Units processed: 92
+  Units skipped: 0
+  Time: 5.0s
+
+2024.06.04-11.15.50-Rec.h5
+  Status: SUCCESS
+  Units processed: 66
+  Units skipped: 0
+  Time: 3.4s
+
+2024.06.04-11.50.08-Rec.h5
+  Status: SUCCESS
+  Units processed: 47
+  Units skipped: 0
+  Time: 2.1s
+
+2024.06.04-12.24.24-Rec.h5
+  Status: SUCCESS
+  Units processed: 138
+  Units skipped: 0
+  Time: 7.2s
+
+2024.06.04-12.57.25-Rec.h5
+  Status: SUCCESS
+  Units processed: 78
+  Units skipped: 0
+  Time: 3.6s
+
+2024.06.04-13.30.37-Rec.h5
+  Status: SUCCESS
+  Units processed: 95
+  Units skipped: 0
+  Time: 5.7s
+
+2024.06.04-14.03.46-Rec.h5
+  Status: SUCCESS
+  Units processed: 202
+  Units skipped: 0
+  Time: 8.8s
+
+2024.06.04-14.37.14-Rec.h5
+  Status: SUCCESS
+  Units processed: 103
+  Units skipped: 0
+  Time: 6.0s
+
+2024.06.04-15.20.07-Rec.h5
+  Status: SUCCESS
+  Units processed: 92
+  Units skipped: 0
+  Time: 5.3s
+
+2024.06.11-08.01.04-Rec.h5
+  Status: SUCCESS
+  Units processed: 130
+  Units skipped: 0
+  Time: 5.7s
+
+2024.06.11-08.39.51-Rec.h5
+  Status: SUCCESS
+  Units processed: 74
+  Units skipped: 0
+  Time: 3.7s
+
+2024.06.11-09.47.31-Rec.h5
+  Status: SUCCESS
+  Units processed: 188
+  Units skipped: 2
+  Skipped units: unit_049, unit_086
+  Time: 10.7s
+
+2024.06.11-10.28.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 105
+  Units skipped: 9
+  Skipped units: unit_002, unit_013, unit_014, unit_049, unit_059, unit_081, unit_089, unit_093, unit_096
+  Time: 4.9s
+
+2024.06.11-11.01.08-Rec.h5
+  Status: SUCCESS
+  Units processed: 249
+  Units skipped: 0
+  Time: 12.9s
+
+2024.06.11-11.33.43-Rec.h5
+  Status: SUCCESS
+  Units processed: 20
+  Units skipped: 0
+  Time: 2.2s
+
+2024.06.11-12.06.21-Rec.h5
+  Status: SUCCESS
+  Units processed: 116
+  Units skipped: 1
+  Skipped units: unit_034
+  Time: 5.3s
+
+2024.06.11-12.38.50-Rec.h5
+  Status: SUCCESS
+  Units processed: 154
+  Units skipped: 0
+  Time: 6.3s
+
+2024.06.11-13.12.42-Rec.h5
+  Status: SUCCESS
+  Units processed: 197
+  Units skipped: 0
+  Time: 10.1s
+
+2024.06.11-13.46.43-Rec.h5
+  Status: SUCCESS
+  Units processed: 36
+  Units skipped: 0
+  Time: 2.2s
+
+2024.06.11-14.22.27-Rec.h5
+  Status: SUCCESS
+  Units processed: 183
+  Units skipped: 0
+  Time: 12.3s
+
+2024.06.18-09.23.13-Rec.h5
+  Status: SUCCESS
+  Units processed: 95
+  Units skipped: 0
+  Time: 5.1s
+
+2024.06.18-09.57.58-Rec.h5
+  Status: SUCCESS
+  Units processed: 126
+  Units skipped: 32
+  Skipped units: unit_002, unit_014, unit_022, unit_025, unit_030, unit_032, unit_038, unit_043, unit_050, unit_058, unit_062, unit_069, unit_076, unit_080, unit_086, unit_095, unit_100, unit_103, unit_114, unit_115, unit_117, unit_118, unit_123, unit_128, unit_130, unit_131, unit_135, unit_136, unit_142, unit_148, unit_152, unit_156
+  Time: 4.9s
+
+2024.06.18-10.42.54-Rec.h5
+  Status: SUCCESS
+  Units processed: 87
+  Units skipped: 0
+  Time: 4.0s
+
+2024.06.18-11.16.04-Rec.h5
+  Status: SUCCESS
+  Units processed: 128
+  Units skipped: 0
+  Time: 4.6s
+
+2024.06.18-11.49.06-Rec.h5
+  Status: SUCCESS
+  Units processed: 100
+  Units skipped: 0
+  Time: 3.5s
+
+2024.06.18-12.21.46-Rec.h5
+  Status: SUCCESS
+  Units processed: 253
+  Units skipped: 0
+  Time: 12.6s
+
+2024.06.18-12.56.24-Rec.h5
+  Status: SUCCESS
+  Units processed: 147
+  Units skipped: 0
+  Time: 6.6s
+
+2024.06.18-13.53.43-Rec.h5
+  Status: SUCCESS
+  Units processed: 184
+  Units skipped: 0
+  Time: 9.1s
+
+2024.07.12-11.16.01-Rec.h5
+  Status: SUCCESS
+  Units processed: 201
+  Units skipped: 0
+  Time: 8.2s
+
+2024.07.31-11.01.07-Rec.h5
+  Status: SUCCESS
+  Units processed: 172
+  Units skipped: 6
+  Skipped units: unit_008, unit_019, unit_021, unit_061, unit_112, unit_157
+  Time: 7.7s
+
+2024.07.31-11.55.38-Rec.h5
+  Status: SUCCESS
+  Units processed: 127
+  Units skipped: 2
+  Skipped units: unit_059, unit_078
+  Time: 5.6s
+
+2024.07.31-12.42.04-Rec.h5
+  Status: SUCCESS
+  Units processed: 155
+  Units skipped: 38
+  Skipped units: unit_002, unit_011, unit_019, unit_024, unit_028, unit_029, unit_033, unit_037, unit_045, unit_049, unit_053, unit_056, unit_060, unit_064, unit_074, unit_081, unit_085, unit_086, unit_093, unit_096, unit_101, unit_105, unit_108, unit_110, unit_117, unit_124, unit_131, unit_134, unit_136, unit_142, unit_144, unit_147, unit_160, unit_163, unit_166, unit_175, unit_182, unit_188
+  Time: 10.1s
+
+2024.08.07-09.46.47-Rec.h5
+  Status: SUCCESS
+  Units processed: 39
+  Units skipped: 0
+  Time: 2.6s
+
+2024.08.07-10.26.25-Rec.h5
+  Status: SUCCESS
+  Units processed: 188
+  Units skipped: 0
+  Time: 11.2s
+
+2024.08.07-11.01.43-Rec.h5
+  Status: SUCCESS
+  Units processed: 64
+  Units skipped: 0
+  Time: 4.2s
+
+2024.08.07-11.36.05-Rec.h5
+  Status: SUCCESS
+  Units processed: 104
+  Units skipped: 11
+  Skipped units: unit_001, unit_008, unit_078, unit_080, unit_083, unit_085, unit_095, unit_098, unit_104, unit_108, unit_112
+  Time: 5.2s
+
+2024.08.08-10.06.06-Rec.h5
+  Status: SUCCESS
+  Units processed: 4
+  Units skipped: 1
+  Skipped units: unit_005
+  Time: 0.7s
+
+2024.08.08-10.40.20-Rec.h5
+  Status: SUCCESS
+  Units processed: 85
+  Units skipped: 0
+  Time: 4.0s
+
+2024.08.08-11.19.12-Rec.h5
+  Status: SUCCESS
+  Units processed: 201
+  Units skipped: 1
+  Skipped units: unit_149
+  Time: 8.5s
+
+2024.08.08-11.59.49-Rec.h5
+  Status: SUCCESS
+  Units processed: 87
+  Units skipped: 2
+  Skipped units: unit_088, unit_089
+  Time: 3.6s
+
+2024.08.08-12.55.52-Rec.h5
+  Status: SUCCESS
+  Units processed: 119
+  Units skipped: 9
+  Skipped units: unit_004, unit_009, unit_033, unit_034, unit_039, unit_045, unit_046, unit_060, unit_084
+  Time: 5.4s
+
+2024.08.08-14.03.33-Rec.h5
+  Status: SUCCESS
+  Units processed: 63
+  Units skipped: 0
+  Time: 2.7s
+
+2024.08.14-11.00.01-Rec.h5
+  Status: SUCCESS
+  Units processed: 24
+  Units skipped: 0
+  Time: 1.6s
+
+2024.08.14-11.33.08-Rec.h5
+  Status: SUCCESS
+  Units processed: 99
+  Units skipped: 1
+  Skipped units: unit_014
+  Time: 5.6s
+
+2024.08.14-12.10.18-Rec.h5
+  Status: SUCCESS
+  Units processed: 245
+  Units skipped: 0
+  Time: 13.0s
+
+2024.08.14-12.46.48-Rec.h5
+  Status: SUCCESS
+  Units processed: 248
+  Units skipped: 1
+  Skipped units: unit_043
+  Time: 11.5s
+
+2024.08.14-13.24.54-Rec.h5
+  Status: SUCCESS
+  Units processed: 187
+  Units skipped: 5
+  Skipped units: unit_127, unit_146, unit_187, unit_191, unit_192
+  Time: 8.6s
+
+2024.09.04-10.31.37-Rec.h5
+  Status: SUCCESS
+  Units processed: 1
+  Units skipped: 2
+  Skipped units: unit_002, unit_003
+  Time: 1.3s
+
+2024.09.04-11.05.49-Rec.h5
+  Status: SUCCESS
+  Units processed: 71
+  Units skipped: 0
+  Time: 4.1s
+
+2024.09.04-11.53.48-Rec.h5
+  Status: SUCCESS
+  Units processed: 271
+  Units skipped: 3
+  Skipped units: unit_063, unit_219, unit_255
+  Time: 14.6s
+
+2024.09.04-12.40.25-Rec.h5
+  Status: SUCCESS
+  Units processed: 170
+  Units skipped: 9
+  Skipped units: unit_003, unit_007, unit_056, unit_071, unit_091, unit_105, unit_108, unit_141, unit_157
+  Time: 8.4s
+
+2024.09.04-13.27.17-Rec.h5
+  Status: SUCCESS
+  Units processed: 78
+  Units skipped: 0
+  Time: 3.5s
+
+2024.09.04-14.15.57-Rec.h5
+  Status: SUCCESS
+  Units processed: 17
+  Units skipped: 2
+  Skipped units: unit_007, unit_017
+  Time: 1.3s
+
+2024.09.04-14.48.49-Rec.h5
+  Status: SUCCESS
+  Units processed: 137
+  Units skipped: 6
+  Skipped units: unit_016, unit_059, unit_080, unit_091, unit_097, unit_103
+  Time: 8.3s
+
+2024.09.04-15.22.08-Rec.h5
+  Status: SUCCESS
+  Units processed: 127
+  Units skipped: 1
+  Skipped units: unit_003
+  Time: 5.6s
+
+2024.09.04-16.08.09-Rec.h5
+  Status: SUCCESS
+  Units processed: 80
+  Units skipped: 0
+  Time: 3.5s
+
+2024.09.04-16.44.26-Rec.h5
+  Status: SUCCESS
+  Units processed: 37
+  Units skipped: 3
+  Skipped units: unit_002, unit_009, unit_033
+  Time: 2.0s
+
+2024.09.06-11.22.50-Rec.h5
+  Status: SUCCESS
+  Units processed: 176
+  Units skipped: 0
+  Time: 7.0s
+
+2024.09.06-12.15.46-Rec.h5
+  Status: SUCCESS
+  Units processed: 213
+  Units skipped: 1
+  Skipped units: unit_141
+  Time: 11.9s
+
+2024.09.06-12.49.12-Rec.h5
+  Status: SUCCESS
+  Units processed: 119
+  Units skipped: 0
+  Time: 6.4s
+
+2024.09.06-13.22.11-Rec.h5
+  Status: SUCCESS
+  Units processed: 58
+  Units skipped: 0
+  Time: 2.6s
+
+2024.09.06-14.22.12-Rec.h5
+  Status: SUCCESS
+  Units processed: 99
+  Units skipped: 0
+  Time: 4.9s
+
+2024.09.10-09.34.29-Rec.h5
+  Status: SUCCESS
+  Units processed: 59
+  Units skipped: 19
+  Skipped units: unit_003, unit_004, unit_007, unit_011, unit_024, unit_030, unit_031, unit_033, unit_040, unit_049, unit_051, unit_057, unit_059, unit_060, unit_063, unit_066, unit_075, unit_077, unit_078
+  Time: 4.1s
+
+2024.09.10-10.12.45-Rec.h5
+  Status: SUCCESS
+  Units processed: 129
+  Units skipped: 0
+  Time: 7.1s
+
+2024.09.10-10.48.14-Rec.h5
+  Status: SUCCESS
+  Units processed: 170
+  Units skipped: 2
+  Skipped units: unit_059, unit_143
+  Time: 8.4s
+
+2024.09.10-11.32.31-Rec.h5
+  Status: SUCCESS
+  Units processed: 166
+  Units skipped: 9
+  Skipped units: unit_011, unit_019, unit_032, unit_033, unit_062, unit_128, unit_130, unit_133, unit_175
+  Time: 8.1s
+
+2024.09.10-12.21.16-Rec.h5
+  Status: SUCCESS
+  Units processed: 116
+  Units skipped: 0
+  Time: 5.5s
+
+2024.09.10-12.57.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 258
+  Units skipped: 1
+  Skipped units: unit_116
+  Time: 11.9s
+
+2024.09.10-13.33.29-Rec.h5
+  Status: SUCCESS
+  Units processed: 195
+  Units skipped: 0
+  Time: 9.8s
+
+2024.09.10-14.41.01-Rec.h5
+  Status: SUCCESS
+  Units processed: 155
+  Units skipped: 0
+  Time: 7.0s
+
+2024.09.10-15.16.40-Rec.h5
+  Status: SUCCESS
+  Units processed: 134
+  Units skipped: 13
+  Skipped units: unit_001, unit_009, unit_019, unit_038, unit_040, unit_047, unit_052, unit_084, unit_088, unit_112, unit_134, unit_138, unit_144
+  Time: 6.7s
+
+2024.09.10-15.50.29-Rec.h5
+  Status: SUCCESS
+  Units processed: 56
+  Units skipped: 1
+  Skipped units: unit_040
+  Time: 3.0s
+
+2024.09.10-16.25.52-Rec.h5
+  Status: SUCCESS
+  Units processed: 48
+  Units skipped: 51
+  Skipped units: unit_001, unit_003, unit_005, unit_006, unit_008, unit_009, unit_012, unit_014, unit_015, unit_020, unit_025, unit_032, unit_033, unit_037, unit_038, unit_041, unit_042, unit_043, unit_045, unit_050, unit_052, unit_053, unit_059, unit_060, unit_061, unit_062, unit_063, unit_064, unit_066, unit_067, unit_068, unit_069, unit_070, unit_074, unit_075, unit_076, unit_077, unit_078, unit_079, unit_080, unit_083, unit_084, unit_085, unit_087, unit_088, unit_091, unit_093, unit_095, unit_096, unit_098, unit_099
+  Time: 4.0s
+
+2024.09.13-11.09.24-Rec.h5
+  Status: SUCCESS
+  Units processed: 60
+  Units skipped: 0
+  Time: 2.5s
+
+2024.09.13-11.45.30-Rec.h5
+  Status: SUCCESS
+  Units processed: 231
+  Units skipped: 0
+  Time: 13.8s
+
+2024.09.13-12.20.10-Rec.h5
+  Status: SUCCESS
+  Units processed: 108
+  Units skipped: 0
+  Time: 5.1s
+
+2024.09.17-10.09.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 92
+  Units skipped: 1
+  Skipped units: unit_090
+  Time: 6.3s
+
+2024.09.17-10.44.42-Rec.h5
+  Status: SUCCESS
+  Units processed: 241
+  Units skipped: 0
+  Time: 14.8s
+
+2024.09.17-11.22.40-Rec.h5
+  Status: SUCCESS
+  Units processed: 255
+  Units skipped: 0
+  Time: 10.9s
+
+2024.09.17-11.53.58-Rec.h5
+  Status: SUCCESS
+  Units processed: 88
+  Units skipped: 0
+  Time: 5.6s
+
+2024.09.17-12.25.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 152
+  Units skipped: 0
+  Time: 8.1s
+
+2024.09.17-13.02.32-Rec.h5
+  Status: SUCCESS
+  Units processed: 162
+  Units skipped: 0
+  Time: 8.0s
+
+2024.09.17-13.35.33-Rec.h5
+  Status: SUCCESS
+  Units processed: 140
+  Units skipped: 0
+  Time: 6.5s
+
+2024.09.17-14.08.58-Rec.h5
+  Status: SUCCESS
+  Units processed: 184
+  Units skipped: 4
+  Skipped units: unit_179, unit_184, unit_185, unit_187
+  Time: 8.6s
+
+2024.09.17-14.39.53-Rec.h5
+  Status: SUCCESS
+  Units processed: 128
+  Units skipped: 0
+  Time: 6.9s
+
+2024.09.17-15.42.55-Rec.h5
+  Status: SUCCESS
+  Units processed: 126
+  Units skipped: 9
+  Skipped units: unit_006, unit_008, unit_031, unit_035, unit_039, unit_042, unit_043, unit_062, unit_091
+  Time: 5.1s
+
+2024.09.18-09.59.38-Rec.h5
+  Status: SUCCESS
+  Units processed: 98
+  Units skipped: 0
+  Time: 4.1s
+
+2024.09.18-10.33.30-Rec.h5
+  Status: SUCCESS
+  Units processed: 54
+  Units skipped: 0
+  Time: 3.0s
+
+2024.09.18-11.05.45-Rec.h5
+  Status: SUCCESS
+  Units processed: 184
+  Units skipped: 3
+  Skipped units: unit_064, unit_066, unit_070
+  Time: 8.3s
+
+2024.09.18-11.39.18-Rec.h5
+  Status: SUCCESS
+  Units processed: 113
+  Units skipped: 3
+  Skipped units: unit_026, unit_040, unit_065
+  Time: 6.1s
+
+2024.09.18-12.17.43-Rec.h5
+  Status: SUCCESS
+  Units processed: 153
+  Units skipped: 0
+  Time: 11.7s
+
+2024.09.18-12.49.24-Rec.h5
+  Status: SUCCESS
+  Units processed: 332
+  Units skipped: 0
+  Time: 20.7s
+
+2024.09.18-13.24.10-Rec.h5
+  Status: SUCCESS
+  Units processed: 84
+  Units skipped: 0
+  Time: 6.0s
+
+2024.09.18-13.57.33-Rec.h5
+  Status: SUCCESS
+  Units processed: 160
+  Units skipped: 6
+  Skipped units: unit_006, unit_029, unit_061, unit_106, unit_141, unit_148
+  Time: 10.6s
+
+2024.09.24-10.09.18-Rec.h5
+  Status: SUCCESS
+  Units processed: 50
+  Units skipped: 0
+  Time: 2.8s
+
+2024.09.24-11.29.53-Rec.h5
+  Status: SUCCESS
+  Units processed: 143
+  Units skipped: 1
+  Skipped units: unit_125
+  Time: 7.1s
+
+2024.09.24-12.15.09-Rec.h5
+  Status: SUCCESS
+  Units processed: 143
+  Units skipped: 24
+  Skipped units: unit_005, unit_019, unit_023, unit_033, unit_040, unit_056, unit_064, unit_070, unit_074, unit_081, unit_089, unit_093, unit_098, unit_102, unit_109, unit_115, unit_123, unit_126, unit_131, unit_140, unit_148, unit_154, unit_157, unit_162
+  Time: 8.1s
+
+2024.09.24-12.47.15-Rec.h5
+  Status: SUCCESS
+  Units processed: 52
+  Units skipped: 0
+  Time: 3.2s
+
+2024.09.24-13.28.45-Rec.h5
+  Status: SUCCESS
+  Units processed: 133
+  Units skipped: 0
+  Time: 7.1s
+
+2024.09.24-14.01.33-Rec.h5
+  Status: SUCCESS
+  Units processed: 75
+  Units skipped: 0
+  Time: 4.2s
+
+2025.02.04-12.02.06-Rec.h5
+  Status: SUCCESS
+  Units processed: 160
+  Units skipped: 0
+  Time: 9.7s
+
+2025.02.04-12.37.50-Rec.h5
+  Status: SUCCESS
+  Units processed: 87
+  Units skipped: 0
+  Time: 5.3s
+
+2025.02.04-13.48.12-Rec.h5
+  Status: SUCCESS
+  Units processed: 213
+  Units skipped: 0
+  Time: 9.8s
+
+2025.02.04-14.22.01-Rec.h5
+  Status: SUCCESS
+  Units processed: 80
+  Units skipped: 0
+  Time: 3.5s
+
+2025.02.04-14.56.00-Rec.h5
+  Status: SUCCESS
+  Units processed: 165
+  Units skipped: 1
+  Skipped units: unit_147
+  Time: 9.5s
+
+2025.02.05-12.09.17-Rec.h5
+  Status: SUCCESS
+  Units processed: 167
+  Units skipped: 0
+  Time: 14.1s
+
+2025.02.05-12.59.07-Rec.h5
+  Status: SUCCESS
+  Units processed: 163
+  Units skipped: 0
+  Time: 9.2s
+
+2025.02.05-13.34.20-Rec.h5
+  Status: SUCCESS
+  Units processed: 160
+  Units skipped: 0
+  Time: 7.9s
+
+2025.02.05-14.48.41-Rec.h5
+  Status: SUCCESS
+  Units processed: 170
+  Units skipped: 0
+  Time: 8.0s
+
+2025.02.05-15.20.52-Rec.h5
+  Status: SUCCESS
+  Units processed: 180
+  Units skipped: 0
+  Time: 13.1s
+
+2025.02.05-15.51.42-Rec.h5
+  Status: SUCCESS
+  Units processed: 29
+  Units skipped: 0
+  Time: 3.0s
+
+2025.02.12-11.22.52-Rec.h5
+  Status: SUCCESS
+  Units processed: 145
+  Units skipped: 2
+  Skipped units: unit_075, unit_107
+  Time: 7.4s
+
+2025.02.12-11.56.47-Rec.h5
+  Status: SUCCESS
+  Units processed: 143
+  Units skipped: 0
+  Time: 8.3s
+
+2025.02.12-12.40.18-Rec.h5
+  Status: SUCCESS
+  Units processed: 232
+  Units skipped: 1
+  Skipped units: unit_117
+  Time: 10.8s
+
+2025.02.12-13.24.05-Rec.h5
+  Status: SUCCESS
+  Units processed: 74
+  Units skipped: 18
+  Skipped units: unit_003, unit_011, unit_012, unit_016, unit_018, unit_028, unit_041, unit_042, unit_046, unit_051, unit_054, unit_061, unit_063, unit_071, unit_072, unit_077, unit_084, unit_087
+  Time: 6.0s
+
+2025.02.12-13.57.08-Rec.h5
+  Status: SUCCESS
+  Units processed: 217
+  Units skipped: 0
+  Time: 11.9s
+
+2025.02.12-14.50.14-Rec.h5
+  Status: SUCCESS
+  Units processed: 357
+  Units skipped: 1
+  Skipped units: unit_310
+  Time: 19.8s
+
+2025.02.12-15.58.41-Rec.h5
+  Status: SUCCESS
+  Units processed: 153
+  Units skipped: 4
+  Skipped units: unit_018, unit_039, unit_071, unit_151
+  Time: 9.5s
+
+2025.02.19-11.25.10-Rec.h5
+  Status: SUCCESS
+  Units processed: 112
+  Units skipped: 0
+  Time: 6.3s
+
+2025.02.19-12.38.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 151
+  Units skipped: 22
+  Skipped units: unit_001, unit_006, unit_016, unit_017, unit_020, unit_021, unit_025, unit_030, unit_056, unit_061, unit_083, unit_088, unit_091, unit_092, unit_104, unit_110, unit_111, unit_115, unit_116, unit_134, unit_139, unit_141
+  Time: 12.9s
+
+2025.02.19-13.34.13-Rec.h5
+  Status: SUCCESS
+  Units processed: 233
+  Units skipped: 0
+  Time: 16.1s
+
+2025.02.19-14.35.18-Rec.h5
+  Status: SUCCESS
+  Units processed: 23
+  Units skipped: 1
+  Skipped units: unit_017
+  Time: 2.7s
+
+2025.02.20-10.13.41-Rec.h5
+  Status: SUCCESS
+  Units processed: 196
+  Units skipped: 0
+  Time: 11.4s
+
+2025.02.20-10.49.25-Rec.h5
+  Status: SUCCESS
+  Units processed: 181
+  Units skipped: 4
+  Skipped units: unit_047, unit_138, unit_145, unit_171
+  Time: 9.8s
+
+2025.02.20-11.50.55-Rec.h5
+  Status: SUCCESS
+  Units processed: 66
+  Units skipped: 0
+  Time: 4.0s
+
+2025.02.20-12.28.01-Rec.h5
+  Status: SUCCESS
+  Units processed: 62
+  Units skipped: 10
+  Skipped units: unit_001, unit_020, unit_021, unit_028, unit_043, unit_045, unit_049, unit_056, unit_064, unit_069
+  Time: 4.0s
+
+2025.02.20-13.00.25-Rec.h5
+  Status: SUCCESS
+  Units processed: 62
+  Units skipped: 18
+  Skipped units: unit_003, unit_009, unit_016, unit_017, unit_019, unit_022, unit_046, unit_047, unit_048, unit_049, unit_050, unit_057, unit_059, unit_067, unit_071, unit_072, unit_073, unit_080
+  Time: 3.6s
+
+2025.02.20-13.51.59-Rec.h5
+  Status: SUCCESS
+  Units processed: 199
+  Units skipped: 19
+  Skipped units: unit_001, unit_002, unit_055, unit_059, unit_063, unit_064, unit_071, unit_082, unit_111, unit_112, unit_116, unit_122, unit_123, unit_126, unit_157, unit_172, unit_210, unit_213, unit_215
+  Time: 12.4s
+
+2025.02.20-14.23.01-Rec.h5
+  Status: SUCCESS
+  Units processed: 86
+  Units skipped: 0
+  Time: 6.3s
+
+2025.02.20-14.54.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 66
+  Units skipped: 1
+  Skipped units: unit_020
+  Time: 3.4s
+
+2025.02.25-09.38.13-Rec.h5
+  Status: SUCCESS
+  Units processed: 10
+  Units skipped: 11
+  Skipped units: unit_003, unit_004, unit_005, unit_006, unit_008, unit_010, unit_012, unit_015, unit_016, unit_018, unit_021
+  Time: 1.0s
+
+2025.02.25-10.06.21-Rec.h5
+  Status: SUCCESS
+  Units processed: 84
+  Units skipped: 0
+  Time: 4.0s
+
+2025.02.25-10.36.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 95
+  Units skipped: 0
+  Time: 4.1s
+
+2025.02.25-11.08.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 150
+  Units skipped: 3
+  Skipped units: unit_014, unit_015, unit_022
+  Time: 7.7s
+
+2025.02.25-12.13.48-Rec.h5
+  Status: SUCCESS
+  Units processed: 189
+  Units skipped: 0
+  Time: 8.8s
+
+2025.02.25-13.01.32-Rec.h5
+  Status: SUCCESS
+  Units processed: 161
+  Units skipped: 1
+  Skipped units: unit_017
+  Time: 8.1s
+
+2025.02.25-13.33.21-Rec.h5
+  Status: SUCCESS
+  Units processed: 250
+  Units skipped: 1
+  Skipped units: unit_076
+  Time: 13.1s
+
+2025.02.25-14.05.13-Rec.h5
+  Status: SUCCESS
+  Units processed: 235
+  Units skipped: 0
+  Time: 12.6s
+
+2025.02.28-10.07.27-Rec.h5
+  Status: SUCCESS
+  Units processed: 159
+  Units skipped: 49
+  Skipped units: unit_013, unit_014, unit_015, unit_021, unit_031, unit_037, unit_042, unit_045, unit_052, unit_057, unit_058, unit_065, unit_067, unit_075, unit_076, unit_080, unit_082, unit_083, unit_084, unit_092, unit_096, unit_097, unit_098, unit_102, unit_105, unit_107, unit_111, unit_113, unit_117, unit_122, unit_127, unit_134, unit_135, unit_137, unit_140, unit_147, unit_154, unit_155, unit_160, unit_178, unit_179, unit_189, unit_191, unit_199, unit_200, unit_202, unit_203, unit_205, unit_206
+  Time: 10.8s
+
+2025.02.28-10.41.55-Rec.h5
+  Status: SUCCESS
+  Units processed: 135
+  Units skipped: 41
+  Skipped units: unit_002, unit_010, unit_015, unit_020, unit_026, unit_029, unit_036, unit_039, unit_044, unit_045, unit_047, unit_054, unit_058, unit_066, unit_072, unit_077, unit_081, unit_082, unit_089, unit_096, unit_098, unit_109, unit_110, unit_112, unit_118, unit_121, unit_126, unit_127, unit_135, unit_137, unit_141, unit_142, unit_150, unit_154, unit_162, unit_165, unit_168, unit_169, unit_171, unit_172, unit_176
+  Time: 7.2s
+
+2025.02.28-11.14.39-Rec.h5
+  Status: SUCCESS
+  Units processed: 212
+  Units skipped: 68
+  Skipped units: unit_005, unit_007, unit_009, unit_014, unit_016, unit_018, unit_023, unit_025, unit_032, unit_041, unit_046, unit_048, unit_053, unit_058, unit_064, unit_067, unit_071, unit_073, unit_074, unit_085, unit_089, unit_091, unit_094, unit_097, unit_102, unit_104, unit_118, unit_119, unit_126, unit_128, unit_129, unit_130, unit_137, unit_141, unit_147, unit_155, unit_161, unit_164, unit_172, unit_176, unit_185, unit_187, unit_189, unit_190, unit_191, unit_194, unit_197, unit_198, unit_200, unit_214, unit_223, unit_227, unit_233, unit_235, unit_239, unit_247, unit_248, unit_253, unit_257, unit_259, unit_263, unit_266, unit_268, unit_269, unit_270, unit_274, unit_277, unit_279
+  Time: 12.0s
+
+2025.02.28-11.52.02-Rec.h5
+  Status: SUCCESS
+  Units processed: 171
+  Units skipped: 47
+  Skipped units: unit_001, unit_006, unit_014, unit_016, unit_020, unit_025, unit_028, unit_029, unit_030, unit_031, unit_037, unit_041, unit_042, unit_051, unit_054, unit_055, unit_056, unit_062, unit_075, unit_089, unit_093, unit_096, unit_099, unit_103, unit_107, unit_109, unit_113, unit_114, unit_123, unit_125, unit_127, unit_131, unit_132, unit_138, unit_144, unit_148, unit_151, unit_152, unit_154, unit_158, unit_161, unit_168, unit_171, unit_172, unit_178, unit_186, unit_201
+  Time: 10.6s
+
+2025.02.28-12.22.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 317
+  Units skipped: 33
+  Skipped units: unit_007, unit_024, unit_031, unit_040, unit_051, unit_064, unit_068, unit_085, unit_103, unit_107, unit_117, unit_137, unit_141, unit_149, unit_162, unit_164, unit_189, unit_197, unit_203, unit_214, unit_220, unit_239, unit_243, unit_249, unit_255, unit_261, unit_271, unit_291, unit_294, unit_301, unit_334, unit_339, unit_343
+  Time: 16.8s
+
+2025.02.28-13.15.09-Rec.h5
+  Status: SUCCESS
+  Units processed: 328
+  Units skipped: 0
+  Time: 18.0s
+
+2025.02.28-13.52.45-Rec.h5
+  Status: SUCCESS
+  Units processed: 52
+  Units skipped: 0
+  Time: 4.0s
+
+2025.02.28-14.56.44-Rec.h5
+  Status: SUCCESS
+  Units processed: 185
+  Units skipped: 23
+  Skipped units: unit_007, unit_024, unit_037, unit_040, unit_041, unit_046, unit_049, unit_050, unit_054, unit_073, unit_088, unit_101, unit_113, unit_141, unit_145, unit_160, unit_168, unit_172, unit_174, unit_186, unit_189, unit_192, unit_200
+  Time: 9.2s
+
+2025.03.04-09.47.46-Rec.h5
+  Status: SUCCESS
+  Units processed: 53
+  Units skipped: 5
+  Skipped units: unit_047, unit_051, unit_053, unit_055, unit_056
+  Time: 2.9s
+
+2025.03.04-10.21.32-Rec.h5
+  Status: SUCCESS
+  Units processed: 251
+  Units skipped: 3
+  Skipped units: unit_082, unit_083, unit_208
+  Time: 13.3s
+
+2025.03.04-11.03.26-Rec.h5
+  Status: SUCCESS
+  Units processed: 358
+  Units skipped: 11
+  Skipped units: unit_059, unit_143, unit_155, unit_218, unit_220, unit_239, unit_243, unit_275, unit_302, unit_305, unit_357
+  Time: 17.1s
+
+2025.03.04-12.00.11-Rec.h5
+  Status: SUCCESS
+  Units processed: 171
+  Units skipped: 1
+  Skipped units: unit_060
+  Time: 9.3s
+
+2025.03.04-12.34.41-Rec.h5
+  Status: SUCCESS
+  Units processed: 73
+  Units skipped: 0
+  Time: 4.1s
+
+2025.03.04-13.06.35-Rec.h5
+  Status: SUCCESS
+  Units processed: 256
+  Units skipped: 40
+  Skipped units: unit_012, unit_020, unit_029, unit_033, unit_037, unit_041, unit_048, unit_056, unit_058, unit_070, unit_073, unit_080, unit_087, unit_093, unit_104, unit_109, unit_123, unit_131, unit_138, unit_154, unit_162, unit_169, unit_173, unit_187, unit_198, unit_203, unit_207, unit_212, unit_225, unit_229, unit_230, unit_244, unit_253, unit_266, unit_272, unit_275, unit_281, unit_287, unit_292, unit_294
+  Time: 14.7s
+
+2025.03.04-13.41.41-Rec.h5
+  Status: SUCCESS
+  Units processed: 74
+  Units skipped: 0
+  Time: 5.7s
+
+2025.03.04-14.37.34-Rec.h5
+  Status: SUCCESS
+  Units processed: 282
+  Units skipped: 0
+  Time: 13.8s
+
+2025.03.05-10.34.34-Rec.h5
+  Status: SUCCESS
+  Units processed: 128
+  Units skipped: 0
+  Time: 6.7s
+
+2025.03.05-11.08.30-Rec.h5
+  Status: SUCCESS
+  Units processed: 313
+  Units skipped: 1
+  Skipped units: unit_216
+  Time: 14.7s
+
+2025.03.05-11.40.16-Rec.h5
+  Status: SUCCESS
+  Units processed: 158
+  Units skipped: 0
+  Time: 9.1s
+
+2025.03.05-12.14.16-Rec.h5
+  Status: SUCCESS
+  Units processed: 60
+  Units skipped: 0
+  Time: 3.1s
+
+2025.03.05-12.46.21-Rec.h5
+  Status: SUCCESS
+  Units processed: 255
+  Units skipped: 0
+  Time: 13.3s
+
+2025.03.05-13.16.31-Rec.h5
+  Status: SUCCESS
+  Units processed: 201
+  Units skipped: 0
+  Time: 10.5s
+
+2025.03.05-13.46.46-Rec.h5
+  Status: SUCCESS
+  Units processed: 206
+  Units skipped: 6
+  Skipped units: unit_056, unit_098, unit_107, unit_166, unit_182, unit_211
+  Time: 9.6s
+
+2025.03.05-14.17.22-Rec.h5
+  Status: SUCCESS
+  Units processed: 229
+  Units skipped: 0
+  Time: 13.8s
+
+2025.03.05-15.11.59-Rec.h5
+  Status: SUCCESS
+  Units processed: 211
+  Units skipped: 0
+  Time: 12.6s
+
+2025.03.05-15.43.39-Rec.h5
+  Status: SUCCESS
+  Units processed: 80
+  Units skipped: 1
+  Skipped units: unit_066
+  Time: 5.3s
+
+2025.03.06-09.16.20-Rec.h5
+  Status: SUCCESS
+  Units processed: 147
+  Units skipped: 20
+  Skipped units: unit_004, unit_008, unit_022, unit_039, unit_046, unit_063, unit_067, unit_072, unit_080, unit_084, unit_104, unit_108, unit_129, unit_135, unit_137, unit_143, unit_147, unit_150, unit_159, unit_164
+  Time: 7.6s
+
+2025.03.06-09.47.57-Rec.h5
+  Status: SUCCESS
+  Units processed: 93
+  Units skipped: 0
+  Time: 7.3s
+
+2025.03.06-10.38.58-Rec.h5
+  Status: SUCCESS
+  Units processed: 83
+  Units skipped: 0
+  Time: 3.7s
+
+2025.03.06-11.10.30-Rec.h5
+  Status: SUCCESS
+  Units processed: 71
+  Units skipped: 0
+  Time: 3.0s
+
+2025.03.06-11.46.59-Rec.h5
+  Status: SUCCESS
+  Units processed: 81
+  Units skipped: 0
+  Time: 3.9s
+
+2025.03.06-12.38.11-Rec.h5
+  Status: SUCCESS
+  Units processed: 24
+  Units skipped: 1
+  Skipped units: unit_004
+  Time: 1.2s
+
+2025.03.06-13.17.43-Rec.h5
+  Status: SUCCESS
+  Units processed: 118
+  Units skipped: 0
+  Time: 4.8s
+
+2025.03.06-13.53.51-Rec.h5
+  Status: SUCCESS
+  Units processed: 207
+  Units skipped: 1
+  Skipped units: unit_156
+  Time: 8.7s
+
+2025.03.06-14.23.42-Rec.h5
+  Status: SUCCESS
+  Units processed: 155
+  Units skipped: 2
+  Skipped units: unit_154, unit_155
+  Time: 7.6s
+
+2025.03.06-14.55.10-Rec.h5
+  Status: SUCCESS
+  Units processed: 192
+  Units skipped: 10
+  Skipped units: unit_001, unit_032, unit_089, unit_098, unit_145, unit_153, unit_161, unit_163, unit_185, unit_194
+  Time: 12.9s
+
+2025.03.19-14.54.57-Rec.h5
+  Status: SUCCESS
+  Units processed: 226
+  Units skipped: 0
+  Time: 12.4s
+
+2025.03.19-15.26.53-Rec.h5
+  Status: SUCCESS
+  Units processed: 74
+  Units skipped: 0
+  Time: 5.0s
+
+2025.03.19-15.57.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 196
+  Units skipped: 0
+  Time: 9.5s
+
+2025.03.19-16.48.30-Rec.h5
+  Status: SUCCESS
+  Units processed: 159
+  Units skipped: 2
+  Skipped units: unit_050, unit_052
+  Time: 5.9s
+
+2025.03.19-17.46.14-Rec.h5
+  Status: SUCCESS
+  Units processed: 341
+  Units skipped: 2
+  Skipped units: unit_191, unit_202
+  Time: 16.4s
+
+2025.03.19-18.30.08-Rec.h5
+  Status: SUCCESS
+  Units processed: 384
+  Units skipped: 0
+  Time: 19.4s
+
+2025.03.19-19.04.09-Rec.h5
+  Status: SUCCESS
+  Units processed: 216
+  Units skipped: 2
+  Skipped units: unit_020, unit_023
+  Time: 10.1s
+
+2025.03.25-10.23.43-Rec.h5
+  Status: SUCCESS
+  Units processed: 163
+  Units skipped: 0
+  Time: 7.6s
+
+2025.03.25-11.11.18-Rec.h5
+  Status: SUCCESS
+  Units processed: 139
+  Units skipped: 5
+  Skipped units: unit_070, unit_123, unit_125, unit_126, unit_134
+  Time: 6.1s
+
+2025.03.25-12.49.10-Rec.h5
+  Status: SUCCESS
+  Units processed: 179
+  Units skipped: 0
+  Time: 9.6s
+
+2025.03.25-13.38.15-Rec.h5
+  Status: SUCCESS
+  Units processed: 207
+  Units skipped: 0
+  Time: 11.5s
+
+2025.03.25-14.36.22-Rec.h5
+  Status: SUCCESS
+  Units processed: 166
+  Units skipped: 0
+  Time: 8.8s
+
+2025.03.25-15.08.13-Rec.h5
+  Status: SUCCESS
+  Units processed: 148
+  Units skipped: 0
+  Time: 6.8s
+
+2025.03.26-11.00.16-Rec.h5
+  Status: SUCCESS
+  Units processed: 24
+  Units skipped: 0
+  Time: 1.3s
+
+2025.03.26-12.26.37-Rec.h5
+  Status: SUCCESS
+  Units processed: 328
+  Units skipped: 0
+  Time: 15.4s
+
+2025.03.26-12.57.34-Rec.h5
+  Status: SUCCESS
+  Units processed: 89
+  Units skipped: 0
+  Time: 5.2s
+
+2025.03.26-13.42.34-Rec.h5
+  Status: SUCCESS
+  Units processed: 203
+  Units skipped: 8
+  Skipped units: unit_019, unit_148, unit_162, unit_166, unit_168, unit_170, unit_209, unit_210
+  Time: 8.2s
+
+2025.03.26-14.28.43-Rec.h5
+  Status: SUCCESS
+  Units processed: 287
+  Units skipped: 27
+  Skipped units: unit_024, unit_041, unit_043, unit_051, unit_054, unit_162, unit_167, unit_172, unit_190, unit_197, unit_200, unit_203, unit_224, unit_234, unit_238, unit_242, unit_252, unit_257, unit_264, unit_276, unit_280, unit_284, unit_286, unit_289, unit_294, unit_297, unit_304
+  Time: 13.6s
+
+2025.03.26-14.58.20-Rec.h5
+  Status: SUCCESS
+  Units processed: 267
+  Units skipped: 3
+  Skipped units: unit_081, unit_135, unit_140
+  Time: 13.1s
+
+2025.03.26-15.27.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 43
+  Units skipped: 0
+  Time: 3.4s
+
+2025.03.26-16.13.47-Rec.h5
+  Status: SUCCESS
+  Units processed: 406
+  Units skipped: 5
+  Skipped units: unit_037, unit_201, unit_276, unit_318, unit_362
+  Time: 27.1s
+
+2025.03.26-16.40.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 82
+  Units skipped: 4
+  Skipped units: unit_005, unit_032, unit_033, unit_035
+  Time: 5.4s
+
+2025.04.09-10.32.20-Rec.h5
+  Status: SUCCESS
+  Units processed: 296
+  Units skipped: 95
+  Skipped units: unit_022, unit_023, unit_024, unit_025, unit_026, unit_028, unit_029, unit_030, unit_034, unit_053, unit_055, unit_056, unit_057, unit_058, unit_061, unit_062, unit_064, unit_065, unit_079, unit_085, unit_086, unit_087, unit_088, unit_089, unit_090, unit_091, unit_092, unit_114, unit_117, unit_119, unit_150, unit_151, unit_154, unit_156, unit_157, unit_159, unit_160, unit_162, unit_163, unit_165, unit_168, unit_171, unit_174, unit_175, unit_176, unit_177, unit_236, unit_237, unit_238, unit_239, unit_240, unit_241, unit_242, unit_243, unit_244, unit_245, unit_246, unit_248, unit_249, unit_251, unit_253, unit_254, unit_271, unit_272, unit_273, unit_274, unit_275, unit_276, unit_277, unit_278, unit_279, unit_304, unit_305, unit_306, unit_307, unit_308, unit_309, unit_310, unit_311, unit_313, unit_314, unit_315, unit_316, unit_317, unit_318, unit_367, unit_368, unit_369, unit_371, unit_372, unit_373, unit_374, unit_375, unit_376, unit_383
+  Time: 15.8s
+
+2025.04.09-11.21.27-Rec.h5
+  Status: SUCCESS
+  Units processed: 152
+  Units skipped: 0
+  Time: 8.8s
+
+2025.04.09-12.59.16-Rec.h5
+  Status: SUCCESS
+  Units processed: 155
+  Units skipped: 3
+  Skipped units: unit_039, unit_045, unit_148
+  Time: 7.9s
+
+2025.04.09-13.29.55-Rec.h5
+  Status: SUCCESS
+  Units processed: 138
+  Units skipped: 0
+  Time: 6.6s
+
+2025.04.09-14.14.41-Rec.h5
+  Status: SUCCESS
+  Units processed: 71
+  Units skipped: 0
+  Time: 3.8s
+
+2025.04.09-14.48.50-Rec.h5
+  Status: SUCCESS
+  Units processed: 176
+  Units skipped: 4
+  Skipped units: unit_018, unit_055, unit_058, unit_179
+  Time: 8.5s
+
+2025.04.10-10.25.49-Rec.h5
+  Status: SUCCESS
+  Units processed: 95
+  Units skipped: 0
+  Time: 4.8s
+
+2025.04.10-11.12.57-Rec.h5
+  Status: SUCCESS
+  Units processed: 280
+  Units skipped: 0
+  Time: 15.1s
+
+2025.04.10-12.58.18-Rec.h5
+  Status: SUCCESS
+  Units processed: 274
+  Units skipped: 0
+  Time: 14.4s
+
+2025.04.10-13.50.16-Rec.h5
+  Status: SUCCESS
+  Units processed: 189
+  Units skipped: 4
+  Skipped units: unit_082, unit_083, unit_084, unit_086
+  Time: 9.1s
+
+2025.04.14-10.59.57-Rec.h5
+  Status: SUCCESS
+  Units processed: 70
+  Units skipped: 0
+  Time: 4.4s
+
+2025.04.14-11.48.33-Rec.h5
+  Status: SUCCESS
+  Units processed: 308
+  Units skipped: 0
+  Time: 15.8s
+
+2025.04.14-12.20.44-Rec.h5
+  Status: SUCCESS
+  Units processed: 85
+  Units skipped: 0
+  Time: 5.6s
+
+2025.04.14-13.08.42-Rec.h5
+  Status: SUCCESS
+  Units processed: 200
+  Units skipped: 0
+  Time: 9.1s
+
+2025.04.14-13.59.17-Rec.h5
+  Status: SUCCESS
+  Units processed: 191
+  Units skipped: 0
+  Time: 8.9s
+
+2025.04.14-14.29.17-Rec.h5
+  Status: SUCCESS
+  Units processed: 137
+  Units skipped: 1
+  Skipped units: unit_041
+  Time: 7.3s
+
+2025.04.14-15.20.49-Rec.h5
+  Status: SUCCESS
+  Units processed: 266
+  Units skipped: 0
+  Time: 14.2s
+
+2025.04.14-16.07.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 286
+  Units skipped: 1
+  Skipped units: unit_022
+  Time: 16.1s
+
+2025.04.15-10.30.10-Rec.h5
+  Status: SUCCESS
+  Units processed: 160
+  Units skipped: 3
+  Skipped units: unit_161, unit_162, unit_163
+  Time: 9.5s
+
+2025.04.15-11.21.52-Rec.h5
+  Status: SUCCESS
+  Units processed: 135
+  Units skipped: 5
+  Skipped units: unit_046, unit_085, unit_086, unit_089, unit_090
+  Time: 5.5s
+
+2025.04.15-12.13.55-Rec.h5
+  Status: SUCCESS
+  Units processed: 260
+  Units skipped: 3
+  Skipped units: unit_130, unit_134, unit_137
+  Time: 13.5s
+
+2025.04.15-13.01.44-Rec.h5
+  Status: SUCCESS
+  Units processed: 294
+  Units skipped: 1
+  Skipped units: unit_145
+  Time: 16.1s
+
+2025.04.15-13.56.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 127
+  Units skipped: 1
+  Skipped units: unit_049
+  Time: 8.0s
+
+2025.04.15-15.10.34-Rec.h5
+  Status: SUCCESS
+  Units processed: 256
+  Units skipped: 0
+  Time: 13.1s
+
+2025.04.22-11.01.20-Rec.h5
+  Status: SUCCESS
+  Units processed: 102
+  Units skipped: 0
+  Time: 6.2s
+
+2025.04.22-11.36.51-Rec.h5
+  Status: SUCCESS
+  Units processed: 170
+  Units skipped: 0
+  Time: 8.3s
+
+2025.04.22-12.46.25-Rec.h5
+  Status: SUCCESS
+  Units processed: 289
+  Units skipped: 0
+  Time: 14.8s
+
+2025.04.22-14.32.11-Rec.h5
+  Status: SUCCESS
+  Units processed: 111
+  Units skipped: 1
+  Skipped units: unit_061
+  Time: 6.4s
+
+2025.04.22-15.17.20-Rec.h5
+  Status: SUCCESS
+  Units processed: 123
+  Units skipped: 0
+  Time: 5.1s
+
+2025.04.23-10.15.00-Rec.h5
+  Status: SUCCESS
+  Units processed: 242
+  Units skipped: 0
+  Time: 13.8s
+
+2025.04.23-10.43.49-Rec.h5
+  Status: SUCCESS
+  Units processed: 140
+  Units skipped: 1
+  Skipped units: unit_056
+  Time: 8.1s
+
+2025.04.23-11.33.44-Rec.h5
+  Status: SUCCESS
+  Units processed: 92
+  Units skipped: 2
+  Skipped units: unit_034, unit_089
+  Time: 4.5s
+
+2025.04.23-12.04.49-Rec.h5
+  Status: SUCCESS
+  Units processed: 209
+  Units skipped: 0
+  Time: 10.6s
+
+2025.04.23-12.36.43-Rec.h5
+  Status: SUCCESS
+  Units processed: 269
+  Units skipped: 2
+  Skipped units: unit_075, unit_159
+  Time: 13.7s
+
+2025.04.23-13.11.30-Rec.h5
+  Status: SUCCESS
+  Units processed: 151
+  Units skipped: 7
+  Skipped units: unit_014, unit_015, unit_016, unit_018, unit_019, unit_020, unit_080
+  Time: 8.4s
+
+2025.04.23-13.39.50-Rec.h5
+  Status: SUCCESS
+  Units processed: 298
+  Units skipped: 15
+  Skipped units: unit_002, unit_007, unit_068, unit_069, unit_072, unit_087, unit_090, unit_125, unit_126, unit_129, unit_147, unit_185, unit_190, unit_211, unit_258
+  Time: 16.2s
+
+2025.04.23-14.09.55-Rec.h5
+  Status: SUCCESS
+  Units processed: 235
+  Units skipped: 0
+  Time: 14.4s
+
+2025.04.23-14.38.53-Rec.h5
+  Status: SUCCESS
+  Units processed: 21
+  Units skipped: 2
+  Skipped units: unit_014, unit_018
+  Time: 2.9s
+
+2025.04.23-15.06.19-Rec.h5
+  Status: SUCCESS
+  Units processed: 282
+  Units skipped: 3
+  Skipped units: unit_061, unit_221, unit_225
+  Time: 12.2s
+
+2025.04.29-11.37.40-Rec.h5
+  Status: SUCCESS
+  Units processed: 276
+  Units skipped: 2
+  Skipped units: unit_157, unit_179
+  Time: 12.9s
+
+2025.04.29-12.08.23-Rec.h5
+  Status: SUCCESS
+  Units processed: 66
+  Units skipped: 0
+  Time: 3.9s
+
+2025.04.29-12.37.37-Rec.h5
+  Status: SUCCESS
+  Units processed: 270
+  Units skipped: 1
+  Skipped units: unit_084
+  Time: 12.9s
+
+2025.04.29-13.09.00-Rec.h5
+  Status: SUCCESS
+  Units processed: 176
+  Units skipped: 0
+  Time: 10.3s
+
+2025.04.29-13.37.28-Rec.h5
+  Status: SUCCESS
+  Units processed: 74
+  Units skipped: 0
+  Time: 3.3s
+
+2025.04.29-14.34.14-Rec.h5
+  Status: SUCCESS
+  Units processed: 199
+  Units skipped: 1
+  Skipped units: unit_091
+  Time: 10.3s
+
+2025.04.29-15.01.54-Rec.h5
+  Status: SUCCESS
+  Units processed: 143
+  Units skipped: 1
+  Skipped units: unit_110
+  Time: 6.6s
+
+2025.04.29-15.32.12-Rec.h5
+  Status: SUCCESS
+  Units processed: 285
+  Units skipped: 7
+  Skipped units: unit_244, unit_245, unit_246, unit_247, unit_248, unit_249, unit_250
+  Time: 13.6s
+
+2025.05.20-12.13.12-Rec.h5
+  Status: SUCCESS
+  Units processed: 269
+  Units skipped: 57
+  Skipped units: unit_007, unit_012, unit_014, unit_017, unit_018, unit_021, unit_022, unit_029, unit_032, unit_033, unit_036, unit_041, unit_048, unit_053, unit_056, unit_065, unit_093, unit_098, unit_121, unit_122, unit_129, unit_133, unit_134, unit_140, unit_150, unit_158, unit_160, unit_165, unit_169, unit_180, unit_196, unit_198, unit_213, unit_214, unit_215, unit_216, unit_225, unit_228, unit_234, unit_239, unit_241, unit_242, unit_246, unit_248, unit_251, unit_256, unit_257, unit_260, unit_261, unit_266, unit_267, unit_276, unit_277, unit_294, unit_309, unit_315, unit_316
+  Time: 15.2s
+

@@ -393,17 +393,19 @@ def _compute_geometry_session(
     threshold_fraction: float,
 ) -> Any:
     """Compute geometry in session mode (deferred saving)."""
-    print(f"[extract_eimage_sta_geometry] Processing {len(session.units)} units...")
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        tqdm = lambda x, **kw: x  # Fallback if tqdm not available
     
     processed_count = 0
-    for unit_id, unit_data in session.units.items():
-        # Check if eimage_sta exists
+    units_with_data = [(uid, ud) for uid, ud in session.units.items() 
+                       if 'data' in ud.get('features', {}).get('eimage_sta', {})]
+    
+    for unit_id, unit_data in tqdm(units_with_data, desc="Extracting soma geometry"):
+        # Get eimage_sta data
         features = unit_data.get('features', {})
         eimage_sta_data = features.get('eimage_sta', {})
-        
-        if 'data' not in eimage_sta_data:
-            continue
-        
         eimage_sta = eimage_sta_data['data']
         
         # Extract geometry
@@ -426,10 +428,6 @@ def _compute_geometry_session(
         }
         
         processed_count += 1
-        print(f"  {unit_id}: center=({geometry.center_row:.1f}, {geometry.center_col:.1f}), "
-              f"size={geometry.size_x:.1f}×{geometry.size_y:.1f}, Ø={geometry.equivalent_diameter:.1f}")
-    
-    print(f"[extract_eimage_sta_geometry] Computed geometry for {processed_count} units")
     
     # Mark step as completed
     session.completed_steps.add('eimage_sta_geometry')
@@ -443,23 +441,25 @@ def _compute_geometry_hdf5(
     threshold_fraction: float,
 ) -> Dict[str, SomaGeometry]:
     """Compute geometry in immediate mode (write directly to HDF5)."""
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        tqdm = lambda x, **kw: x  # Fallback if tqdm not available
+    
     all_geometries = {}
     
     with h5py.File(hdf5_path, 'r+') as f:
         if 'units' not in f:
-            print("No units found in HDF5 file")
             return all_geometries
         
         unit_ids = list(f['units'].keys())
-        print(f"Computing soma geometry for {len(unit_ids)} units...")
         
-        for unit_id in unit_ids:
+        for unit_id in tqdm(unit_ids, desc="Extracting soma geometry"):
             unit_group = f[f'units/{unit_id}']
             
             # Check for eimage_sta data
             eimage_sta_path = 'features/eimage_sta/data'
             if eimage_sta_path not in unit_group:
-                print(f"  {unit_id}: No eimage_sta data, skipping")
                 continue
             
             # Load eimage_sta
@@ -484,11 +484,7 @@ def _compute_geometry_hdf5(
             geom_group.create_dataset('area', data=geometry.area)
             geom_group.create_dataset('equivalent_diameter', data=geometry.equivalent_diameter)
             geom_group.create_dataset('diff_map', data=geometry.diff_map, compression='gzip')
-            
-            print(f"  {unit_id}: center=({geometry.center_row:.1f}, {geometry.center_col:.1f}), "
-                  f"size={geometry.size_x:.1f}×{geometry.size_y:.1f}, Ø={geometry.equivalent_diameter:.1f}")
     
-    print(f"Geometry computed for {len(all_geometries)} units")
     return all_geometries
 
 

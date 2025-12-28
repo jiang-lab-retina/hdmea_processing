@@ -282,7 +282,7 @@ class PipelineSession:
         self,
         output_path: Optional[Union[str, Path]] = None,
         *,
-        overwrite: bool = True,
+        overwrite: bool = False,
     ) -> Path:
         """
         Write all accumulated data to HDF5 and transition to SAVED state.
@@ -293,8 +293,8 @@ class PipelineSession:
         Args:
             output_path: Path for output file. If None, uses
                          output_dir / f"{dataset_id}.h5"
-            overwrite: If True (default), overwrite existing file with warning.
-                       If False, raise error if file exists.
+            overwrite: If False (default), raise error if file exists.
+                       If True, overwrite existing file with warning.
         
         Returns:
             Path to the saved HDF5 file
@@ -313,6 +313,7 @@ class PipelineSession:
         # Check for existing file
         if output_path.exists():
             if not overwrite:
+                logger.warning(f"Blocked overwrite attempt: {output_path} (use overwrite=True to force)")
                 raise FileExistsError(
                     f"File already exists: {output_path}. Use overwrite=True to replace."
                 )
@@ -580,9 +581,8 @@ class PipelineSession:
                     if value.ndim > 0:
                         group.create_dataset(str_key, data=value)
                     else:
-                        # Scalar numpy array -> wrap in 1-element array
-                        arr = np.array([value.item()])
-                        group.create_dataset(str_key, data=arr)
+                        # Scalar numpy array -> store as scalar (shape=())
+                        group.create_dataset(str_key, data=value.item())
                 elif isinstance(value, dict):
                     subgroup = group.create_group(str_key)
                     self._write_dict_to_hdf5(subgroup, value)
@@ -591,27 +591,24 @@ class PipelineSession:
                     arr = np.array(value)
                     group.create_dataset(str_key, data=arr)
                 elif isinstance(value, (int, float)):
-                    # Store scalars as 1-element arrays for GUI visibility
-                    arr = np.array([value])
-                    group.create_dataset(str_key, data=arr)
+                    # Store scalars as scalar datasets (shape=())
+                    group.create_dataset(str_key, data=value)
                 elif isinstance(value, np.integer):
-                    arr = np.array([int(value)], dtype=np.int64)
-                    group.create_dataset(str_key, data=arr)
+                    group.create_dataset(str_key, data=int(value))
                 elif isinstance(value, np.floating):
-                    arr = np.array([float(value)], dtype=np.float64)
-                    group.create_dataset(str_key, data=arr)
+                    group.create_dataset(str_key, data=float(value))
                 elif isinstance(value, str):
-                    # Store strings as 1-element arrays
+                    # Store strings as scalar string datasets
                     dt = h5py.string_dtype(encoding='utf-8')
-                    group.create_dataset(str_key, data=[value], dtype=dt)
+                    group.create_dataset(str_key, data=value, dtype=dt)
                 elif isinstance(value, bytes):
-                    # Decode bytes to string and store as 1-element array
+                    # Decode bytes to string and store as scalar
                     dt = h5py.string_dtype(encoding='utf-8')
-                    group.create_dataset(str_key, data=[value.decode('utf-8', errors='ignore')], dtype=dt)
+                    group.create_dataset(str_key, data=value.decode('utf-8', errors='ignore'), dtype=dt)
                 else:
-                    # Unknown type - try to store as string
+                    # Unknown type - try to store as string scalar
                     dt = h5py.string_dtype(encoding='utf-8')
-                    group.create_dataset(str_key, data=[str(value)], dtype=dt)
+                    group.create_dataset(str_key, data=str(value), dtype=dt)
             except Exception as e:
                 logger.warning(f"Could not write key '{str_key}' to HDF5: {e}")
     

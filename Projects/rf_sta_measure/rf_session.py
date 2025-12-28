@@ -144,20 +144,20 @@ def extract_rf_geometry_session(
     Returns:
         Updated PipelineSession with geometry results
     """
-    logger.info(f"Extracting RF geometry for {len(session.units)} units")
-    logger.info(f"Frame range: {frame_range}, Threshold: {threshold_fraction}")
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        tqdm = lambda x, **kw: x  # Fallback if tqdm not available
+    
+    # Filter units with STA data
+    units_with_sta = [(uid, ud) for uid, ud in session.units.items() 
+                      if ud.get('features', {}).get(STA_FEATURE_NAME, {}).get('data') is not None]
     
     processed_count = 0
     
-    for unit_id, unit_data in session.units.items():
+    for unit_id, unit_data in tqdm(units_with_sta, desc="Extracting RF geometry"):
         # Get STA data
         sta_data = unit_data.get('features', {}).get(STA_FEATURE_NAME, {}).get('data')
-        
-        if sta_data is None:
-            logger.warning(f"No STA data for {unit_id}, skipping")
-            continue
-        
-        logger.info(f"Processing {unit_id}...")
         
         try:
             # Extract RF geometry using the function from rf_sta_measure.py
@@ -177,23 +177,12 @@ def extract_rf_geometry_session(
             unit_data['features'][STA_FEATURE_NAME]['sta_geometry'] = _geometry_to_dict(geometry)
             
             processed_count += 1
-            
-            logger.info(f"  Center: ({geometry.center_col:.1f}, {geometry.center_row:.1f})")
-            logger.info(f"  Size: {geometry.size_x:.1f} x {geometry.size_y:.1f} pixels")
-            
-            if geometry.gaussian_fit is not None:
-                logger.info(f"  Gaussian R2: {geometry.gaussian_fit.r_squared:.3f}")
-            if geometry.dog_fit is not None:
-                logger.info(f"  DoG R2: {geometry.dog_fit.r_squared:.3f}")
                 
         except Exception as e:
-            logger.error(f"Error processing {unit_id}: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.debug(f"Error processing {unit_id}: {e}")
             continue
     
     session.completed_steps.add('extract_rf_geometry')
-    logger.info(f"Extracted geometry for {processed_count}/{len(session.units)} units")
     
     return session
 
@@ -214,6 +203,10 @@ def _geometry_to_dict(geometry: RFGeometry) -> Dict[str, Any]:
         'equivalent_diameter': geometry.equivalent_diameter,
         'peak_frame': geometry.peak_frame if geometry.peak_frame is not None else -1,
     }
+    
+    # Add diff_map if available (for visualization)
+    if geometry.diff_map is not None:
+        result['diff_map'] = geometry.diff_map
     
     # Gaussian fit group (individual items)
     if geometry.gaussian_fit is not None:
