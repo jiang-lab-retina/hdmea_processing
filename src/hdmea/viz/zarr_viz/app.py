@@ -1193,11 +1193,20 @@ def render_array_view(node: TreeNode) -> None:
 
         # Trial boundary x-limit option (only for histogram of individual trials)
         x_limits = None
+        bin_size = None  # Override histogram bin size (None = use default acquisition_rate-based)
         if is_1d and plot_type == "histogram":
             # Check if this is an individual trial spike times dataset
-            # Pattern: units/*/spike_times_sectioned/*/trials_spike_times/{idx}
             import re
+            
+            # Pattern 1: units/*/spike_times_sectioned/*/trials_spike_times/{idx}
             trial_match = re.search(r'/spike_times_sectioned/([^/]+)/trials_spike_times/(\d+)$', node.path)
+            
+            # Pattern 2: units/*/spike_times_sectioned/{movie_name}/direction_section/{direction}/trials/{rep_idx}
+            # For moving bar direction sectioning (DSGC)
+            direction_trial_match = re.search(
+                r'/spike_times_sectioned/([^/]+)/direction_section/(\d+)/trials/(\d+)$', 
+                node.path
+            )
             
             if trial_match:
                 movie_name = trial_match.group(1)
@@ -1228,6 +1237,42 @@ def render_array_view(node: TreeNode) -> None:
                             bounds_handle.close()
                     except Exception as e:
                         st.caption(f"⚠️ Could not load trial boundaries: {e}")
+            
+            elif direction_trial_match:
+                # Moving bar direction section trials
+                movie_name = direction_trial_match.group(1)
+                direction = direction_trial_match.group(2)
+                rep_idx = int(direction_trial_match.group(3))
+                
+                # Use bin size of 1 for moving bar trials (60 Hz data, 1 frame per bin)
+                bin_size = 1
+                st.caption(f"📊 Bin width: 1 frame (60 Hz moving bar)")
+                
+                # Show checkbox for trial x-limit option
+                use_trial_xlim = st.checkbox(
+                    "Use section boundaries as x-limit",
+                    value=st.session_state.use_trial_xlim,
+                    key="use_trial_xlim_checkbox",
+                    help="Set histogram x-axis to section start/end times from section_bounds",
+                )
+                st.session_state.use_trial_xlim = use_trial_xlim
+                
+                if use_trial_xlim:
+                    # Load section_bounds from sibling dataset
+                    # Path: units/*/spike_times_sectioned/{movie_name}/direction_section/{direction}/section_bounds
+                    parent_path = node.path.rsplit('/trials/', 1)[0]
+                    section_bounds_path = f"{parent_path}/section_bounds"
+                    
+                    try:
+                        bounds_handle, bounds_data = _open_data_file(st.session_state.zarr_path, section_bounds_path)
+                        bounds_array = np.asarray(bounds_data)
+                        if rep_idx < len(bounds_array):
+                            x_limits = (float(bounds_array[rep_idx, 0]), float(bounds_array[rep_idx, 1]))
+                            st.caption(f"📏 X-limits: [{x_limits[0]:.0f}, {x_limits[1]:.0f}] (direction {direction}°, rep {rep_idx})")
+                        if bounds_handle is not None:
+                            bounds_handle.close()
+                    except Exception as e:
+                        st.caption(f"⚠️ Could not load section boundaries: {e}")
 
         # Generate plot
         try:
@@ -1242,6 +1287,7 @@ def render_array_view(node: TreeNode) -> None:
                 slide_dim=slide_dim,
                 blur_sigma=blur_sigma if use_blur else None,
                 color_range=color_range,
+                bin_size=bin_size,
             )
 
             # Display interactive plot

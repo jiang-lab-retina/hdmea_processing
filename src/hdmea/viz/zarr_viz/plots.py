@@ -52,6 +52,7 @@ def create_plot(
     slide_dim: int = 0,
     blur_sigma: Optional[float] = None,
     color_range: Optional[tuple[float, float]] = None,
+    bin_size: Optional[float] = None,
 ) -> go.Figure:
     """Create appropriate plot based on array dimensions.
 
@@ -66,6 +67,7 @@ def create_plot(
         slide_dim: For 3D arrays, the dimension to slice through (default: 0).
         blur_sigma: Gaussian blur sigma (None = no blur).
         color_range: (min, max) tuple for consistent color scale.
+        bin_size: Override histogram bin width. If provided, used instead of acquisition_rate.
 
     Returns:
         Plotly Figure object.
@@ -93,7 +95,7 @@ def create_plot(
         # 1D array - line plot or histogram
         data = sample_array(array)
         if plot_type == "histogram":
-            fig = plot_1d_histogram(data, title, acquisition_rate=acquisition_rate, x_limits=x_limits)
+            fig = plot_1d_histogram(data, title, acquisition_rate=acquisition_rate, x_limits=x_limits, bin_size=bin_size)
         else:
             fig = plot_1d(data, title)
         if sampled or len(data) < array.shape[0]:
@@ -170,6 +172,7 @@ def plot_1d_histogram(
     title: str = "", 
     acquisition_rate: Optional[float] = None,
     x_limits: Optional[tuple[float, float]] = None,
+    bin_size: Optional[float] = None,
 ) -> go.Figure:
     """Create histogram for 1D data with 100 ms bins.
 
@@ -179,6 +182,8 @@ def plot_1d_histogram(
         acquisition_rate: Data acquisition rate in Hz. Used to calculate 
                          bin width as acquisition_rate × 0.1 (100 ms worth of samples).
         x_limits: Optional (min, max) tuple to set x-axis range.
+        bin_size: Override bin width. If provided, this value is used directly
+                 instead of calculating from acquisition_rate.
 
     Returns:
         Plotly Figure with histogram.
@@ -187,8 +192,10 @@ def plot_1d_histogram(
     data = np.asarray(data, dtype=np.float64)
     data = data[np.isfinite(data)]  # Remove NaN and Inf values
     
-    # Calculate bin width: acquisition_rate × 0.1 (100 ms in samples)
-    if acquisition_rate is not None and acquisition_rate > 0:
+    # Use explicit bin_size if provided, otherwise calculate from acquisition_rate
+    if bin_size is not None and bin_size > 0:
+        bin_width = bin_size
+    elif acquisition_rate is not None and acquisition_rate > 0:
         bin_width = acquisition_rate * 0.1  # 100 ms in samples
     else:
         # Fallback: use 50 bins if no acquisition rate available
@@ -224,7 +231,19 @@ def plot_1d_histogram(
     )
 
     # Add bin width annotation
-    if acquisition_rate is not None and acquisition_rate > 0:
+    if bin_size is not None and bin_size > 0:
+        # Explicit bin size was provided
+        fig.add_annotation(
+            text=f"Bin width: {bin_width:.1f} (fixed)",
+            xref="paper",
+            yref="paper",
+            x=1,
+            y=1.02,
+            showarrow=False,
+            font=dict(size=11, color="#666666"),
+            xanchor="right",
+        )
+    elif acquisition_rate is not None and acquisition_rate > 0:
         fig.add_annotation(
             text=f"Bin width: {bin_width:.1f} (100 ms)",
             xref="paper",
