@@ -67,6 +67,9 @@ STA_GEOMETRY_FEATURE: str = "sta_perfect_dense_noise_15x15_15hz_r42_3min"
 DEFAULT_MOVIE_NAME: str = "moving_h_bar_s5_d8_3x"
 """Default moving bar movie name."""
 
+INVALID_CENTER_VALUE: float = -5.0
+"""Sentinel value indicating STA fitting failure (no valid RF center)."""
+
 
 # =============================================================================
 # Data Classes
@@ -190,7 +193,10 @@ def get_cell_center(
         sta_feature_name: Name of STA feature containing geometry.
     
     Returns:
-        (row, col) in 300×300 space, or None if not found.
+        (row, col) in 300×300 space, or None if:
+            - STA geometry path not found
+            - center_row/center_col datasets missing
+            - center values are invalid (-5.0 sentinel, indicating STA fitting failure)
     """
     geometry_path = f"units/{unit_id}/features/{sta_feature_name}/sta_geometry"
     
@@ -205,10 +211,18 @@ def get_cell_center(
     center_row_15 = float(geometry_group["center_row"][()])
     center_col_15 = float(geometry_group["center_col"][()])
     
+    # Check for invalid sentinel value (STA fitting failure)
+    if center_row_15 == INVALID_CENTER_VALUE or center_col_15 == INVALID_CENTER_VALUE:
+        logger.warning(
+            f"Unit {unit_id} has invalid STA center ({center_row_15}, {center_col_15}) - "
+            f"STA fitting likely failed. Skipping."
+        )
+        return None
+    
     # Convert to 300×300
     row_300, col_300 = convert_center_15_to_300(center_row_15, center_col_15)
     
-    # Log warning if clipping occurred
+    # Log warning if clipping occurred (for edge cases, not failure)
     expected_row = int(center_row_15 * COORDINATE_SCALE_FACTOR)
     expected_col = int(center_col_15 * COORDINATE_SCALE_FACTOR)
     

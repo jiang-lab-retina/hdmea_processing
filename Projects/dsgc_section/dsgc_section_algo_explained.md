@@ -144,13 +144,20 @@ movie_start_frame += PRE_MARGIN_FRAME_NUM  # +60 frames padding
 center_row_15 = hdf5[f"units/{unit_id}/features/{sta_feature}/sta_geometry/center_row"][()]
 center_col_15 = hdf5[f"units/{unit_id}/features/{sta_feature}/sta_geometry/center_col"][()]
 
+# Check for invalid sentinel value (-5.0 = STA fitting failed)
+if center_row_15 == -5.0 or center_col_15 == -5.0:
+    # Skip this unit - no valid receptive field detected
+    return None
+
 # Convert to 300×300 stimulus space
 center_row_300 = int(center_row_15 * 20)  # Scale factor = 20
 center_col_300 = int(center_col_15 * 20)
 
-# Clip to valid range [0, 299]
+# Clip to valid range [0, 299] for edge cases
 center = (clip(center_row_300, 0, 299), clip(center_col_300, 0, 299))
 ```
+
+**Note**: Units with `center_row = -5.0` or `center_col = -5.0` are skipped because this sentinel value indicates STA fitting failure (no detectable receptive field).
 
 ### Step 4: Convert Spike Times to Movie Frames
 
@@ -306,6 +313,7 @@ python dsgc_validation_plots.py unit_001
 | `N_REPETITIONS` | 3 | `dsgc_direction.py` |
 | `DEFAULT_PADDING_FRAMES` | 10 | `dsgc_direction.py` |
 | `COORDINATE_SCALE_FACTOR` | 20 | `dsgc_direction.py` |
+| `INVALID_CENTER_VALUE` | -5.0 | `dsgc_direction.py` |
 | `PRE_MARGIN_FRAME_NUM` | 60 | `section_time.py` |
 
 ---
