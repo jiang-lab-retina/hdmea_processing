@@ -651,10 +651,17 @@ def section_spike_times(
                     post_samples=post_samples,
                 )
                 
-                # Store in session
+                # Store in session with trials_start_end and metadata
                 unit_data["spike_times_sectioned"][movie_name] = {
                     "full_spike_times": full_spike_times,
                     "trials_spike_times": trials_spike_times,
+                    "trials_start_end": np.array(trial_boundaries, dtype=np.int64),
+                    "_attrs": {
+                        "n_trials": len(trial_boundaries),
+                        "pad_margin": list(pad_margin),
+                        "pre_samples": pre_samples,
+                        "post_samples": post_samples,
+                    },
                 }
                 movies_actually_processed.add(movie_name)
             

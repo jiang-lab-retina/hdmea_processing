@@ -9,6 +9,8 @@ Steps processed:
 - Step 1: Load recording with eimage_sta
 - Step 2: Add section time from playlist
 - Step 3: Section spike times
+- Step 3b: Add section time from analog signal (ipRGC test)
+- Step 3c: Section spike times for analog stimuli
 - Step 4: Compute STA (dense noise)
 - Step 5: Add CMTR/CMCR metadata
 - Step 6: Extract soma geometry
@@ -49,7 +51,9 @@ from hdmea.pipeline import PipelineSession, create_session
 from Projects.unified_pipeline.steps import (
     load_recording_step,
     add_section_time_step,
+    add_section_time_analog_step,
     section_spike_times_step,
+    section_spike_times_analog_step,
     compute_sta_step,
     add_metadata_step,
     extract_soma_geometry_step,
@@ -64,6 +68,7 @@ from Projects.unified_pipeline.config import (
     setup_logging,
     LoadRecordingConfig,
     SectionTimeConfig,
+    SectionTimeAnalogConfig,
     GeometryConfig,
     APTrackingConfig,
     DSGCConfig,
@@ -127,6 +132,7 @@ def process_single_recording(
     output_dir: Path,
     load_config: Optional[LoadRecordingConfig] = None,
     section_config: Optional[SectionTimeConfig] = None,
+    section_analog_config: Optional[SectionTimeAnalogConfig] = None,
     geometry_config: Optional[GeometryConfig] = None,
     ap_config: Optional[APTrackingConfig] = None,
     dsgc_config: Optional[DSGCConfig] = None,
@@ -156,6 +162,8 @@ def process_single_recording(
         load_config = LoadRecordingConfig()
     if section_config is None:
         section_config = SectionTimeConfig()
+    if section_analog_config is None:
+        section_analog_config = SectionTimeAnalogConfig()
     if geometry_config is None:
         geometry_config = GeometryConfig()
     if ap_config is None:
@@ -208,6 +216,19 @@ def process_single_recording(
     # Step 3: Section spike times
     session = section_spike_times_step(
         pad_margin=section_config.pad_margin,
+        session=session,
+    )
+    
+    # Step 3b: Add section time from analog signal (ipRGC test)
+    session = add_section_time_analog_step(
+        config=section_analog_config,
+        session=session,
+    )
+    
+    # Step 3c: Section spike times for analog-detected stimuli
+    session = section_spike_times_analog_step(
+        movie_name=section_analog_config.movie_name,
+        pad_margin=section_analog_config.pad_margin,
         session=session,
     )
     

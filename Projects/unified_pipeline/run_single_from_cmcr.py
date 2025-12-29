@@ -30,7 +30,9 @@ from hdmea.pipeline import create_session
 from Projects.unified_pipeline.steps import (
     load_recording_step,
     add_section_time_step,
+    add_section_time_analog_step,
     section_spike_times_step,
+    section_spike_times_analog_step,
     compute_sta_step,
     add_metadata_step,
     extract_soma_geometry_step,
@@ -45,6 +47,7 @@ from Projects.unified_pipeline.config import (
     setup_logging,
     LoadRecordingConfig,
     SectionTimeConfig,
+    SectionTimeAnalogConfig,
     GeometryConfig,
     APTrackingConfig,
     DSGCConfig,
@@ -144,6 +147,7 @@ def run_pipeline(
     # Configuration
     load_config = LoadRecordingConfig()
     section_config = SectionTimeConfig()
+    section_analog_config = SectionTimeAnalogConfig()
     geometry_config = GeometryConfig()
     ap_config = APTrackingConfig()
     dsgc_config = DSGCConfig()
@@ -172,6 +176,19 @@ def run_pipeline(
     # Step 3: Section spike times
     session = section_spike_times_step(
         pad_margin=section_config.pad_margin,
+        session=session,
+    )
+    
+    # Step 3b: Add section time from analog signal (ipRGC test)
+    session = add_section_time_analog_step(
+        config=section_analog_config,
+        session=session,
+    )
+    
+    # Step 3c: Section spike times for analog-detected stimuli
+    session = section_spike_times_analog_step(
+        movie_name=section_analog_config.movie_name,
+        pad_margin=section_analog_config.pad_margin,
         session=session,
     )
     
@@ -250,7 +267,7 @@ def run_pipeline(
     
     print("\nCompleted steps:")
     for step in sorted(session.completed_steps):
-        status = "⚠️" if ":skipped" in step or ":failed" in step else "✓"
+        status = "[!]" if ":skipped" in step or ":failed" in step else "[+]"
         print(f"  {status} {step}")
     
     return output_path

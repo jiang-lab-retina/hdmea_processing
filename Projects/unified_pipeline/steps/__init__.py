@@ -31,7 +31,9 @@ Adding New Steps:
 Available Steps:
     - load_recording_step: Load CMCR/CMTR with eimage_sta
     - add_section_time_step: Add section timing from playlist
+    - add_section_time_analog_step: Add section timing from analog signal (raw_ch1)
     - section_spike_times_step: Section spike times
+    - section_spike_times_analog_step: Section spike times using sample indices (no frame conversion)
     - compute_sta_step: Compute STA
     - add_metadata_step: Add CMTR/CMCR metadata
     - extract_soma_geometry_step: Extract soma geometry
@@ -45,6 +47,8 @@ Available Steps:
 # Step imports
 from .load_recording import load_recording_step
 from .section_time import add_section_time_step, section_spike_times_step, compute_sta_step
+from .section_time_analog import add_section_time_analog_step
+from .section_spike_times_analog import section_spike_times_analog_step
 from .metadata import add_metadata_step
 from .geometry import extract_soma_geometry_step, extract_rf_geometry_step
 from .gsheet import add_gsheet_step
@@ -59,6 +63,9 @@ __all__ = [
     "add_section_time_step",
     "section_spike_times_step",
     "compute_sta_step",
+    # Analog section time (standalone steps)
+    "add_section_time_analog_step",
+    "section_spike_times_analog_step",
     # Step 5
     "add_metadata_step",
     # Steps 6-7

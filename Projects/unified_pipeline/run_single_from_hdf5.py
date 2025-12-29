@@ -5,6 +5,20 @@ Unified Pipeline: Resume Processing from HDF5
 This script loads an existing HDF5 file and resumes processing
 from the last checkpoint, skipping already-completed steps.
 
+Available steps:
+- section_time: Add section time from playlist
+- section_spike_times: Section spike times
+- section_time_analog: Add section time from analog signal (ipRGC test)
+- section_spike_times_analog: Section spike times for analog stimuli
+- sta: Compute STA (dense noise)
+- metadata: Add CMTR/CMCR metadata
+- soma_geometry: Extract soma geometry
+- rf_geometry: Extract RF geometry
+- gsheet: Add Google Sheet metadata
+- cell_type: Add manual cell type labels
+- ap_tracking: Compute AP tracking (CNN)
+- dsgc: Section by direction (DSGC)
+
 Usage:
     python run_single_from_hdf5.py path/to/existing.h5
     
@@ -13,6 +27,9 @@ Usage:
     
     # Run specific additional steps only:
     python run_single_from_hdf5.py input.h5 --steps ap_tracking,dsgc
+    
+    # Run analog steps:
+    python run_single_from_hdf5.py input.h5 --steps section_time_analog,section_spike_times_analog
 """
 
 import argparse
@@ -31,6 +48,11 @@ from hdmea.pipeline import load_session_from_hdf5
 
 # Import step wrappers
 from Projects.unified_pipeline.steps import (
+    add_section_time_step,
+    add_section_time_analog_step,
+    section_spike_times_step,
+    section_spike_times_analog_step,
+    compute_sta_step,
     add_metadata_step,
     extract_soma_geometry_step,
     extract_rf_geometry_step,
@@ -42,6 +64,8 @@ from Projects.unified_pipeline.steps import (
 
 from Projects.unified_pipeline.config import (
     setup_logging,
+    SectionTimeConfig,
+    SectionTimeAnalogConfig,
     GeometryConfig,
     APTrackingConfig,
     DSGCConfig,
@@ -56,6 +80,11 @@ from Projects.unified_pipeline.config import (
 
 # Available steps that can be run after loading from HDF5
 AVAILABLE_STEPS = {
+    'section_time': add_section_time_step,
+    'section_spike_times': section_spike_times_step,
+    'section_time_analog': add_section_time_analog_step,
+    'section_spike_times_analog': section_spike_times_analog_step,
+    'sta': compute_sta_step,
     'metadata': add_metadata_step,
     'soma_geometry': extract_soma_geometry_step,
     'rf_geometry': extract_rf_geometry_step,
@@ -65,7 +94,7 @@ AVAILABLE_STEPS = {
     'dsgc': section_by_direction_step,
 }
 
-# Default step order for resume
+# Default step order for resume (steps 5-11 only, assumes 1-4 already done)
 DEFAULT_STEP_ORDER = [
     'metadata',
     'soma_geometry', 
@@ -123,7 +152,7 @@ def run_pipeline_from_hdf5(
     if session.completed_steps:
         print("\n  Already completed:")
         for step in sorted(session.completed_steps):
-            print(f"    ✓ {step}")
+            print(f"    [+] {step}")
     
     # Determine output path
     if output_path is None:
@@ -139,11 +168,13 @@ def run_pipeline_from_hdf5(
     print(f"\n  Steps to run:")
     for step in steps_to_run:
         if step in AVAILABLE_STEPS:
-            print(f"    • {step}")
+            print(f"    - {step}")
         else:
-            print(f"    ✗ {step} (unknown)")
+            print(f"    x {step} (unknown)")
     
     # Configuration
+    section_config = SectionTimeConfig()
+    section_analog_config = SectionTimeAnalogConfig()
     geometry_config = GeometryConfig()
     ap_config = APTrackingConfig()
     dsgc_config = DSGCConfig()
@@ -162,7 +193,33 @@ def run_pipeline_from_hdf5(
         step_func = AVAILABLE_STEPS[step_name]
         
         # Pass appropriate config for each step
-        if step_name == 'soma_geometry':
+        if step_name == 'section_time':
+            session = step_func(
+                playlist_name=section_config.playlist_name,
+                session=session,
+            )
+        elif step_name == 'section_spike_times':
+            session = step_func(
+                pad_margin=section_config.pad_margin,
+                session=session,
+            )
+        elif step_name == 'section_time_analog':
+            session = step_func(
+                config=section_analog_config,
+                session=session,
+            )
+        elif step_name == 'section_spike_times_analog':
+            session = step_func(
+                movie_name=section_analog_config.movie_name,
+                pad_margin=section_analog_config.pad_margin,
+                session=session,
+            )
+        elif step_name == 'sta':
+            session = step_func(
+                cover_range=section_config.cover_range,
+                session=session,
+            )
+        elif step_name == 'soma_geometry':
             session = step_func(
                 frame_range=geometry_config.frame_range,
                 threshold_fraction=geometry_config.threshold_fraction,
@@ -212,7 +269,7 @@ def run_pipeline_from_hdf5(
     
     print("\nCompleted steps:")
     for step in sorted(session.completed_steps):
-        status = "⚠️" if ":skipped" in step or ":failed" in step else "✓"
+        status = "[!]" if ":skipped" in step or ":failed" in step else "[+]"
         print(f"  {status} {step}")
     
     return output_path
@@ -261,7 +318,7 @@ def main():
     if args.list_steps:
         print("Available steps:")
         for name in DEFAULT_STEP_ORDER:
-            print(f"  • {name}")
+            print(f"  - {name}")
         return
     
     # Validate input

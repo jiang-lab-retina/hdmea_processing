@@ -78,6 +78,23 @@ class SectionTimeConfig:
 
 
 @dataclass
+class SectionTimeAnalogConfig:
+    """
+    Configuration for analog section time detection.
+    
+    Used by add_section_time_analog_step to detect stimulus onsets
+    from raw light reference signal (raw_ch1).
+    """
+    threshold_value: float = 1e5  # Peak height threshold for find_peaks() on signal derivative
+    movie_name: str = "iprgc_test"  # Identifier for this stimulus type
+    plot_duration: float = 120.0  # Duration of each section in seconds
+    min_peak_distance_margin: float = 0.8  # Fraction of plot_duration for min peak spacing
+    pad_margin: Tuple[float, float] = (2.0, 0.0)  # (pre_s, post_s) padding for spike sectioning
+    repeat: Optional[int] = None  # Limit to first N detected trials (None = all)
+    force: bool = False  # Overwrite existing section_time if exists
+
+
+@dataclass
 class GeometryConfig:
     """Configuration for geometry extraction."""
     frame_range: Tuple[int, int] = (10, 14)
