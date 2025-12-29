@@ -1,0 +1,9 @@
+movie_name,n_trials,target_samples,target_duration_s,target_bins_10ms,consistent
+baseline_127,1,59479,2.97395,297,True
+freq_step_5st_3x,3,495165,24.75825,2475,False
+green_blue_3s_3i_3x,3,237884,11.8942,1189,False
+iprgc_test,2,2400000,120.0,12000,True
+moving_h_bar_s5_d8_3x,3,1493260,74.663,7466,False
+perfect_dense_noise_15x15_15hz_r42_3min,1,3569161,178.45805,17845,True
+step_up_5s_5i_b0_30x,30,197853,9.89265,989,False
+step_up_5s_5i_b0_3x,3,198158,9.9079,990,False

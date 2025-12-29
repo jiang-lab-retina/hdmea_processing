@@ -46,10 +46,7 @@ AP_TRACKING_MODEL_PATH = PROJECT_ROOT / "Projects/ap_trace_hdf5/model/CNN_3d_wit
 
 # DSGC configuration
 DSGC_MOVIE_NAME = "moving_h_bar_s5_d8_3x"
-DSGC_ON_OFF_DICT_PATH = Path(
-    r"M:\Python_Project\Data_Processing_2025\Design_Stimulation_Pattern"
-    r"\Data\Stimulations\moving_h_bar_s5_d8_3x_on_off_dict_hd.pkl"
-)
+DSGC_ON_OFF_DICT_PATH = Path(__file__).parent / "helper_data" / "moving_h_bar_s5_d8_3x_on_off_dict_hd_refined.pkl"
 DSGC_PADDING_FRAMES = 10
 
 # Output directories
