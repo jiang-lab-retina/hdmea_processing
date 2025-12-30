@@ -81,3 +81,5 @@ Thumbs.db
 credentials/
 
 *.parquet
+*.pkl
+*.csv
