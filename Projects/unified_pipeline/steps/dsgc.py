@@ -19,6 +19,7 @@ from Projects.unified_pipeline.config import (
     DSGC_PADDING_FRAMES,
     DSGCConfig,
     red_warning,
+    PRE_MARGIN_FRAME_NUM,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,19 +72,42 @@ def get_sta_geometry_from_session(session: PipelineSession, unit_id: str) -> Opt
     """
     Get STA geometry center (row, col) in 300×300 stimulus space from session.
     
+    Uses gaussian_fit center coordinates for more accurate positioning:
+    - gaussian_fit/center_y -> row (in 15×15 space)
+    - gaussian_fit/center_x -> col (in 15×15 space)
+    
     Returns:
         (row_300, col_300) in stimulus pixel space, or None if not found
     """
     unit_data = session.units.get(unit_id, {})
     features = unit_data.get('features', {})
     
-    # Try sta_perfect_dense_noise geometry first
+    # Try sta_perfect_dense_noise gaussian_fit center first (most accurate)
     for sta_name in ['sta_perfect_dense_noise_15x15_15hz_r42_3min', 'sta']:
         sta_feature = features.get(sta_name, {})
-        geometry = sta_feature.get('sta_geometry', {})
+        sta_geometry = sta_feature.get('sta_geometry', {})
+        gaussian_fit = sta_geometry.get('gaussian_fit', {})
         
-        center_row = geometry.get('center_row')
-        center_col = geometry.get('center_col')
+        # Use gaussian_fit: center_y is row, center_x is col
+        center_row = gaussian_fit.get('center_y')
+        center_col = gaussian_fit.get('center_x')
+        
+        if center_row is not None and center_col is not None:
+            # Handle numpy arrays
+            if isinstance(center_row, np.ndarray):
+                center_row = float(center_row.flat[0]) if center_row.size > 0 else None
+            if isinstance(center_col, np.ndarray):
+                center_col = float(center_col.flat[0]) if center_col.size > 0 else None
+            
+            # Skip if NaN
+            if center_row is not None and center_col is not None:
+                if not (np.isnan(center_row) or np.isnan(center_col)):
+                    # Convert from 15×15 to 300×300 space
+                    return convert_center_15_to_300(center_row, center_col)
+        
+        # Fallback to sta_geometry center_row/center_col if gaussian_fit not available
+        center_row = sta_geometry.get('center_row')
+        center_col = sta_geometry.get('center_col')
         
         if center_row is not None and center_col is not None:
             # Handle numpy arrays
@@ -93,25 +117,28 @@ def get_sta_geometry_from_session(session: PipelineSession, unit_id: str) -> Opt
                 center_col = float(center_col.flat[0]) if center_col.size > 0 else None
             
             if center_row is not None and center_col is not None:
-                # Convert from 15×15 to 300×300 space
-                return convert_center_15_to_300(center_row, center_col)
+                if not (np.isnan(center_row) or np.isnan(center_col)):
+                    # Convert from 15×15 to 300×300 space
+                    return convert_center_15_to_300(center_row, center_col)
     
-    # Try eimage_sta geometry
+    # Try eimage_sta corrected coordinates if electrode_alignment was done
     eimage_sta = features.get('eimage_sta', {})
     geometry = eimage_sta.get('geometry', {})
     
-    center_row = geometry.get('center_row')
-    center_col = geometry.get('center_col')
+    # First try corrected coordinates (already in 300×300 space)
+    corrected_row = geometry.get('center_corrected_row')
+    corrected_col = geometry.get('center_corrected_col')
     
-    if center_row is not None and center_col is not None:
-        if isinstance(center_row, np.ndarray):
-            center_row = float(center_row.flat[0]) if center_row.size > 0 else None
-        if isinstance(center_col, np.ndarray):
-            center_col = float(center_col.flat[0]) if center_col.size > 0 else None
+    if corrected_row is not None and corrected_col is not None:
+        if isinstance(corrected_row, np.ndarray):
+            corrected_row = float(corrected_row.flat[0]) if corrected_row.size > 0 else None
+        if isinstance(corrected_col, np.ndarray):
+            corrected_col = float(corrected_col.flat[0]) if corrected_col.size > 0 else None
         
-        if center_row is not None and center_col is not None:
-            # Convert from 15×15 to 300×300 space
-            return convert_center_15_to_300(center_row, center_col)
+        if corrected_row is not None and corrected_col is not None:
+            if not (np.isnan(corrected_row) or np.isnan(corrected_col)):
+                # Already in 300×300 space, just round to int
+                return (int(round(corrected_row)), int(round(corrected_col)))
     
     return None
 
@@ -211,11 +238,12 @@ def section_by_direction_step(
         if isinstance(section_time, dict):
             section_time = section_time.get('data', section_time)
         
-        section_time = np.asarray(section_time)
+        section_time = np.asarray(section_time) # TODO: section_time contains PRE_MARGIN_FRAME_NUM, so we need to subtract it when converting to movie-relative frames
         movie_start_sample = section_time[0, 0]
         
         # Find movie start frame
         movie_start_frame = np.searchsorted(frame_timestamps, movie_start_sample)
+        movie_start_frame = movie_start_frame + PRE_MARGIN_FRAME_NUM
         logger.info(f"  Movie '{movie_name}' starts at frame {movie_start_frame}")
         
         # Process each unit
@@ -238,14 +266,12 @@ def section_by_direction_step(
             center_row, center_col = center
             
             # Get on/off times for this pixel
+            # Key format: (row, col) - matches on_off_dict keys
             pixel_key = (center_row, center_col)
             if pixel_key not in on_off_dict:
-                # Try flipped key
-                pixel_key = (center_col, center_row)
-                if pixel_key not in on_off_dict:
-                    logger.debug(f"  No on/off data for pixel {center} in {unit_id}")
-                    units_skipped += 1
-                    continue
+                logger.debug(f"  No on/off data for pixel {center} in {unit_id}")
+                units_skipped += 1
+                continue
             
             pixel_timing = on_off_dict[pixel_key]
             on_times = pixel_timing['on_peak_location']

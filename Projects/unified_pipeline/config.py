@@ -46,12 +46,21 @@ AP_TRACKING_MODEL_PATH = PROJECT_ROOT / "Projects/ap_trace_hdf5/model/CNN_3d_wit
 
 # DSGC configuration
 DSGC_MOVIE_NAME = "moving_h_bar_s5_d8_3x"
-DSGC_ON_OFF_DICT_PATH = Path(__file__).parent / "helper_data" / "moving_h_bar_s5_d8_3x_on_off_dict_hd_refined.pkl"
-DSGC_PADDING_FRAMES = 10
+# DSGC_ON_OFF_DICT_PATH = Path(__file__).parent / "helper_data" / "moving_h_bar_s5_d8_3x_on_off_dict_hd_refined.pkl"
+DSGC_ON_OFF_DICT_PATH = Path(__file__).parent / "helper_data" / "moving_h_bar_s5_d8_3x_on_off_dict_hd_double_refined.pkl"
+DSGC_PADDING_FRAMES = 40
 
 # Output directories
 DEFAULT_OUTPUT_DIR = Path(__file__).parent / "test_output"
 REFERENCE_OUTPUT_DIR = PROJECT_ROOT / "Projects/dsgc_section/export_dsgc_section_20251226"
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+PRE_MARGIN_FRAME_NUM = 60
+POST_MARGIN_FRAME_NUM = 120
+DEFAULT_PAD_FRAME = 180
 
 
 # =============================================================================
@@ -125,6 +134,23 @@ class DSGCConfig:
     movie_name: str = DSGC_MOVIE_NAME
     on_off_dict_path: Path = DSGC_ON_OFF_DICT_PATH
     padding_frames: int = DSGC_PADDING_FRAMES
+
+
+@dataclass
+class ElectrodeAlignmentConfig:
+    """
+    Configuration for electrode-to-stimulus coordinate alignment.
+    
+    Fits a linear model between eimage_sta geometry (65×65 electrode grid)
+    and sta_geometry (15×15 STA grid) to enable conversion to 300×300
+    stimulus coordinate space.
+    """
+    min_units_threshold: int = 3  # Min units required for valid fit
+    r_square_threshold: float = 0.7  # Min R² for valid fit
+    outlier_threshold: float = 3.0  # Max residual (in STA units) before outlier removal
+    eimage_snr_threshold: float = 40.0  # Min SNR for eimage center (high threshold)
+    sta_snr_threshold: float = 1.0  # Min SNR for STA center (lower threshold)
+    sta_feature_name: str = "sta_perfect_dense_noise_15x15_15hz_r42_3min"
 
 
 # =============================================================================

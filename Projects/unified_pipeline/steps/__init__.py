@@ -41,6 +41,7 @@ Available Steps:
     - add_gsheet_step: Load Google Sheet metadata
     - add_cell_type_step: Add manual cell type labels
     - compute_ap_tracking_step: Compute AP tracking
+    - electrode_alignment_step: Align electrode coords to stimulus space
     - section_by_direction_step: Section by direction (DSGC)
 """
 
@@ -54,6 +55,7 @@ from .geometry import extract_soma_geometry_step, extract_rf_geometry_step
 from .gsheet import add_gsheet_step
 from .cell_type import add_cell_type_step
 from .ap_tracking import compute_ap_tracking_step
+from .electrode_alignment import electrode_alignment_step
 from .dsgc import section_by_direction_step
 
 __all__ = [
@@ -77,7 +79,9 @@ __all__ = [
     "add_cell_type_step",
     # Step 10
     "compute_ap_tracking_step",
-    # Step 11
+    # Step 11 - Electrode alignment
+    "electrode_alignment_step",
+    # Step 12 - DSGC
     "section_by_direction_step",
     # Utilities
     "skip_if_completed",

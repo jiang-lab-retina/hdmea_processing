@@ -79,3 +79,5 @@ Thumbs.db
 *.png
 
 credentials/
+
+*.parquet
