@@ -77,9 +77,11 @@ Thumbs.db
 #large data files
 *.h5
 *.png
+*.svg
 
 credentials/
 
 *.parquet
 *.pkl
 *.csv
+*.pth

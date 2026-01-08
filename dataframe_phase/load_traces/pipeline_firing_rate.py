@@ -12,6 +12,12 @@ Usage:
     python pipeline_firing_rate.py --start 5            # Process from file 5 to end
     python pipeline_firing_rate.py --list               # List all files with indices
     python pipeline_firing_rate.py --no-plots           # Skip plot generation
+    python pipeline_firing_rate.py --strict             # Fail on validation errors
+    python pipeline_firing_rate.py --incremental        # Skip processed files, append new
+    python pipeline_firing_rate.py --start-step 2       # Start from step 2 (reshape)
+
+Note: By default, units with inconsistent trial lengths are excluded with a warning.
+      Use --strict to fail instead, or --skip-validation to skip validation entirely.
 """
 
 import argparse
@@ -36,7 +42,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 # Input/Output directories
-HDF5_DIR = project_root / "Projects/unified_pipeline/export_dsgc_updated"
+HDF5_DIR = project_root / "Projects/unified_pipeline/export_dsgc_sta_updated"
 #HDF5_DIR = project_root / "Projects/unified_pipeline/export_all_steps"
 
 OUTPUT_DIR = Path(__file__).parent / "output"
@@ -401,9 +407,16 @@ def validate_units(df: pd.DataFrame, movie_groups: Dict[str, List[str]]) -> Tupl
         mode_length = Counter(all_lengths).most_common(1)[0][0]
         mode_lengths[movie] = mode_length
         
-        for unit_idx in df.index:
-            unit_lengths = lengths_df.loc[unit_idx].values
+        for unit_idx in df.index.unique():
+            row_data = lengths_df.loc[unit_idx]
+            # Handle duplicate indices: loc returns DataFrame, need to get first row
+            if isinstance(row_data, pd.DataFrame):
+                row_data = row_data.iloc[0]
+            unit_lengths = row_data.values
             for i, length in enumerate(unit_lengths):
+                # Ensure length is a scalar (handle any remaining array edge cases)
+                if hasattr(length, '__len__') and not isinstance(length, str):
+                    length = int(length.flat[0]) if hasattr(length, 'flat') else int(length[0])
                 if length == 0:
                     continue
                 if abs(length - mode_length) > 1:
@@ -586,7 +599,13 @@ Examples:
   python pipeline_firing_rate.py --end 5              # Process first 5 files
   python pipeline_firing_rate.py --list               # List all files with indices
   python pipeline_firing_rate.py --no-plots           # Skip plot generation
+  python pipeline_firing_rate.py --strict             # Fail on validation errors
+  python pipeline_firing_rate.py --incremental        # Skip processed, append new
+  python pipeline_firing_rate.py --start-step 2       # Start from step 2 (reshape)
+  python pipeline_firing_rate.py --start-step 3       # Start from step 3 (plots only)
   python pipeline_firing_rate.py --input /path/to/hdf5 --output suffix
+
+Note: By default, units with inconsistent trial lengths are excluded with a warning.
         """
     )
     
@@ -633,10 +652,24 @@ Examples:
         help="Skip validation step (useful for partial runs with known inconsistencies)"
     )
     parser.add_argument(
-        "--warn-only",
+        "--strict",
         action="store_true",
-        dest="warn_only",
-        help="Show validation errors as warnings instead of failing"
+        dest="strict",
+        help="Fail on validation errors instead of excluding units and continuing"
+    )
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        dest="incremental",
+        help="Skip already-processed files and append new data to existing output"
+    )
+    parser.add_argument(
+        "--start-step",
+        type=int,
+        default=1,
+        choices=[1, 2, 3],
+        dest="start_step",
+        help="Start from a specific step (1=generate, 2=reshape, 3=plots). Default: 1"
     )
     
     return parser.parse_args()
@@ -702,80 +735,183 @@ def main():
         print(f"  First: {h5_files[0].name}")
         print(f"  Last:  {h5_files[-1].name}")
     
-    # =========================================================================
-    # STEP 1: Generate interframe firing rates
-    # =========================================================================
-    print("\n" + "=" * 80)
-    print("STEP 1: Generate Interframe Firing Rates")
-    print("=" * 80)
-    
-    # Use selected files for target length determination
-    target_lengths = determine_target_lengths(h5_files)
-    print(f"Target lengths determined for {len(target_lengths)} columns (using selected files)")
-    
-    df_raw = process_all_data(h5_files, target_lengths)
-    print(f"\nRaw DataFrame: {df_raw.shape} (units x trials)")
-    
     # Determine output filename suffix
     if args.output:
         suffix = args.output
     elif start_idx != 0 or end_idx != len(all_h5_files):
         suffix = f"_{start_idx}_{end_idx}"
     else:
-        suffix = ""
+        suffix = "20260104"
     
-    # Save raw
+    # Define output paths early for incremental mode
     raw_path = OUTPUT_DIR / f"interframe_firing_rate{suffix}.parquet"
-    df_raw.to_parquet(raw_path)
-    print(f"Saved: {raw_path}")
+    movies_path = OUTPUT_DIR / f"firing_rate_by_movie{suffix}.parquet"
+    
+    # Incremental mode: check for existing data and filter files
+    existing_df_raw = None
+    existing_df_movies = None
+    if args.incremental and raw_path.exists():
+        print(f"\n\033[94mIncremental mode: Loading existing data from {raw_path.name}\033[0m")
+        existing_df_raw = pd.read_parquet(raw_path)
+        
+        # Extract dataset_ids from existing data
+        # Index format: "2024.02.26-10.53.19-Rec_unit_001" -> dataset_id: "2024.02.26-10.53.19-Rec"
+        existing_dataset_ids = set()
+        for idx in existing_df_raw.index:
+            # Split by "_unit_" to correctly extract dataset ID
+            parts = idx.rsplit("_unit_", 1)
+            if len(parts) == 2:
+                existing_dataset_ids.add(parts[0])
+            else:
+                # Fallback: use the full index as dataset ID
+                existing_dataset_ids.add(idx)
+        
+        print(f"  Found {len(existing_dataset_ids)} already-processed datasets")
+        
+        # Filter h5_files to only include new ones (compare with h5 file stem)
+        new_h5_files = [
+            f for f in h5_files 
+            if f.stem not in existing_dataset_ids
+        ]
+        
+        skipped_count = len(h5_files) - len(new_h5_files)
+        if skipped_count > 0:
+            print(f"  Skipping {skipped_count} already-processed files")
+        
+        if len(new_h5_files) == 0:
+            print(f"\n\033[92mAll files already processed. Nothing to do.\033[0m")
+            return
+        
+        h5_files = new_h5_files
+        print(f"  Processing {len(h5_files)} new files")
+        
+        # Also load existing movies dataframe if it exists
+        if movies_path.exists():
+            existing_df_movies = pd.read_parquet(movies_path)
+    
+    # =========================================================================
+    # STEP 1: Generate interframe firing rates
+    # =========================================================================
+    if args.start_step <= 1:
+        print("\n" + "=" * 80)
+        print("STEP 1: Generate Interframe Firing Rates")
+        print("=" * 80)
+        
+        # Use all selected files (including already-processed) for target length determination
+        # This ensures consistency across incremental runs
+        target_lengths = determine_target_lengths(all_h5_files[start_idx:end_idx])
+        print(f"Target lengths determined for {len(target_lengths)} columns")
+        
+        df_raw = process_all_data(h5_files, target_lengths)
+        print(f"\nNew DataFrame: {df_raw.shape} (units x trials)")
+        
+        # Append to existing data if incremental mode
+        if existing_df_raw is not None:
+            # Align columns (new data might have different columns)
+            all_columns = list(set(existing_df_raw.columns) | set(df_raw.columns))
+            existing_df_raw = existing_df_raw.reindex(columns=all_columns)
+            df_raw = df_raw.reindex(columns=all_columns)
+            
+            df_raw = pd.concat([existing_df_raw, df_raw], axis=0)
+            
+            # Remove any duplicate indices (keep first occurrence)
+            n_before = len(df_raw)
+            df_raw = df_raw[~df_raw.index.duplicated(keep='first')]
+            n_removed = n_before - len(df_raw)
+            if n_removed > 0:
+                print(f"\033[93m  Removed {n_removed} duplicate units\033[0m")
+            
+            print(f"Combined DataFrame: {df_raw.shape} (units x trials)")
+        
+        # Save raw
+        df_raw.to_parquet(raw_path)
+        print(f"Saved: {raw_path}")
+    else:
+        print("\n" + "=" * 80)
+        print("STEP 1: Generate Interframe Firing Rates (SKIPPED - loading from file)")
+        print("=" * 80)
+        
+        if not raw_path.exists():
+            print(f"\n\033[91mERROR: Cannot start from step {args.start_step}.\033[0m")
+            print(f"\033[91mRequired file not found: {raw_path}\033[0m")
+            print("\033[93mRun the pipeline from step 1 first.\033[0m")
+            return
+        
+        df_raw = pd.read_parquet(raw_path)
+        print(f"Loaded: {raw_path}")
+        print(f"DataFrame: {df_raw.shape} (units x trials)")
     
     # =========================================================================
     # STEP 2: Reshape into movie-based format
     # =========================================================================
-    print("\n" + "=" * 80)
-    print("STEP 2: Reshape into Movie-Based Format")
-    print("=" * 80)
-    
-    movie_groups = parse_column_groups(df_raw.columns.tolist())
-    print(f"Movie groups: {len(movie_groups)}")
-    for movie, cols in sorted(movie_groups.items()):
-        print(f"  {movie}: {len(cols)} trials")
-    
-    # Validate
-    if args.skip_validation:
-        print("\n\033[93mValidation SKIPPED (--skip-validation)\033[0m")
-        rejected = set()
-    else:
-        rejected, mode_lengths, reasons = validate_units(df_raw, movie_groups)
+    if args.start_step <= 2:
+        print("\n" + "=" * 80)
+        print("STEP 2: Reshape into Movie-Based Format")
+        print("=" * 80)
         
-        if rejected:
-            if args.warn_only:
-                print(f"\n\033[93mWARNING: {len(rejected)} units have inconsistent trial lengths (continuing anyway)\033[0m")
-                for unit in sorted(rejected)[:10]:
-                    print(f"\033[93m  {unit}: {reasons.get(unit, [''])[0]}\033[0m")
-                if len(rejected) > 10:
-                    print(f"\033[93m  ... and {len(rejected) - 10} more\033[0m")
-            else:
-                print(f"\n\033[91mERROR: {len(rejected)} units rejected!\033[0m")
-                for unit in sorted(rejected)[:10]:
-                    print(f"\033[91m  {unit}: {reasons.get(unit, [''])[0]}\033[0m")
-                print("\n\033[93mTip: Use --warn-only to continue despite validation errors,")
-                print("     or --skip-validation to skip validation entirely.\033[0m")
-                raise ValueError(f"{len(rejected)} units have inconsistent trial lengths")
+        movie_groups = parse_column_groups(df_raw.columns.tolist())
+        print(f"Movie groups: {len(movie_groups)}")
+        for movie, cols in sorted(movie_groups.items()):
+            print(f"  {movie}: {len(cols)} trials")
+        
+        # Validate
+        if args.skip_validation:
+            print("\n\033[93mValidation SKIPPED (--skip-validation)\033[0m")
+            rejected = set()
         else:
-            print("All units passed validation")
-    
-    # Reshape
-    df_movies = reshape_to_movies(df_raw, movie_groups)
-    print(f"\nReshaped DataFrame: {df_movies.shape} (units x movies)")
-    
-    # Save
-    df_save = df_movies.copy()
-    for col in df_save.columns:
-        df_save[col] = df_save[col].apply(lambda x: x.tolist() if isinstance(x, np.ndarray) else x)
-    movies_path = OUTPUT_DIR / f"firing_rate_by_movie{suffix}.parquet"
-    df_save.to_parquet(movies_path)
-    print(f"Saved: {movies_path}")
+            rejected, mode_lengths, reasons = validate_units(df_raw, movie_groups)
+            
+            if rejected:
+                if args.strict:
+                    # Strict mode: fail on validation errors
+                    print(f"\n\033[91mERROR: {len(rejected)} units rejected!\033[0m")
+                    for unit in sorted(rejected)[:10]:
+                        print(f"\033[91m  {unit}: {reasons.get(unit, [''])[0]}\033[0m")
+                    print("\n\033[93mTip: Remove --strict to exclude invalid units and continue.\033[0m")
+                    raise ValueError(f"{len(rejected)} units have inconsistent trial lengths")
+                else:
+                    # Default: warn and exclude rejected units
+                    print(f"\n\033[93mWARNING: {len(rejected)} units excluded due to inconsistent trial lengths\033[0m")
+                    for unit in sorted(rejected)[:10]:
+                        print(f"\033[93m  {unit}: {reasons.get(unit, [''])[0]}\033[0m")
+                    if len(rejected) > 10:
+                        print(f"\033[93m  ... and {len(rejected) - 10} more\033[0m")
+                    
+                    # Remove rejected units from dataframe
+                    df_raw = df_raw.drop(index=list(rejected), errors='ignore')
+                    print(f"Continuing with {len(df_raw)} valid units")
+            else:
+                print("All units passed validation")
+        
+        # Reshape
+        df_movies = reshape_to_movies(df_raw, movie_groups)
+        print(f"\nReshaped DataFrame: {df_movies.shape} (units x movies)")
+        
+        # Save
+        df_save = df_movies.copy()
+        for col in df_save.columns:
+            df_save[col] = df_save[col].apply(lambda x: x.tolist() if isinstance(x, np.ndarray) else x)
+        df_save.to_parquet(movies_path)
+        print(f"Saved: {movies_path}")
+    else:
+        print("\n" + "=" * 80)
+        print("STEP 2: Reshape into Movie-Based Format (SKIPPED - loading from file)")
+        print("=" * 80)
+        
+        if not movies_path.exists():
+            print(f"\n\033[91mERROR: Cannot start from step {args.start_step}.\033[0m")
+            print(f"\033[91mRequired file not found: {movies_path}\033[0m")
+            print("\033[93mRun the pipeline from step 2 first.\033[0m")
+            return
+        
+        df_movies = pd.read_parquet(movies_path)
+        # Convert lists back to numpy arrays
+        for col in df_movies.columns:
+            df_movies[col] = df_movies[col].apply(
+                lambda x: np.array(x) if isinstance(x, list) else x
+            )
+        print(f"Loaded: {movies_path}")
+        print(f"DataFrame: {df_movies.shape} (units x movies)")
     
     # =========================================================================
     # STEP 3: Generate plots
@@ -798,16 +934,26 @@ def main():
     print("SUMMARY")
     print("=" * 80)
     
-    print(f"""
-Pipeline Complete:
-------------------
-- Units: {len(df_movies)}
-- Movies: {len(df_movies.columns)}
-- Datasets: {len(h5_files)} (indices {start_idx}-{end_idx-1})
-
-Output Files:
-- {raw_path.name}
-- {movies_path.name}""")
+    # Build summary based on what was actually run
+    summary_lines = [
+        "",
+        "Pipeline Complete:",
+        "------------------",
+        f"- Units: {len(df_movies)}",
+        f"- Movies: {len(df_movies.columns)}",
+    ]
+    if args.start_step == 1:
+        summary_lines.append(f"- Datasets: {len(h5_files)} (indices {start_idx}-{end_idx-1})")
+    else:
+        summary_lines.append(f"- Started from step {args.start_step}")
+    
+    summary_lines.extend([
+        "",
+        "Output Files:",
+        f"- {raw_path.name}",
+        f"- {movies_path.name}",
+    ])
+    print("\n".join(summary_lines))
     
     if not args.no_plots:
         print(f"- {PLOTS_DIR.name}/ (plots)")

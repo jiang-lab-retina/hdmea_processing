@@ -176,6 +176,71 @@ class OnOffFit:
 
 
 @dataclass
+class LNLFit:
+    """
+    Linear-Nonlinear model fit results.
+    
+    The LNL model maps stimulus through a linear filter (STA) to produce
+    a generator signal g_t, then applies a static nonlinearity f(g) to
+    predict firing rate.
+    
+    Attributes:
+        a: Gain parameter in f(g) = exp(b + a*g) in ORIGINAL generator scale
+        b: Baseline parameter in f(g) = exp(b + a*g)
+        a_norm: Gain in NORMALIZED generator scale (effect of 1 std change on log-rate)
+        log_likelihood: Poisson log-likelihood of the fitted model
+        null_log_likelihood: Log-likelihood of constant-rate null model
+        deviance_explained: Bits per spike (information gain over null model)
+        r_squared: Correlation between predicted and observed rates
+        n_frames: Number of frames used for fitting
+        n_spikes: Total number of spikes used
+        g_bin_centers: Generator signal bin centers for histogram nonlinearity
+        rate_vs_g: Estimated firing rate at each bin (histogram nonlinearity)
+        rectification_index: Asymmetry of response (0=symmetric, 1=fully rectified)
+        nonlinearity_index: Deviation from linear fit (0=linear, higher=more curved)
+        threshold_g: Generator signal value at which rate crosses mean (in std units)
+    """
+    # Parametric LNP parameters
+    a: float          # Original scale (very small due to large g_std)
+    b: float
+    a_norm: float     # Normalized scale (interpretable: effect per std of g)
+    # Fit quality metrics
+    log_likelihood: float
+    null_log_likelihood: float
+    deviance_explained: float
+    r_squared: float
+    # Nonlinearity metrics
+    rectification_index: float   # Asymmetry: 0=symmetric, 1=fully ON or OFF rectified
+    nonlinearity_index: float    # Curvature: deviation from linear (R² of linear fit)
+    threshold_g: float           # Threshold in std units where rate = mean_rate
+    # Data info
+    n_frames: int
+    n_spikes: int
+    # Histogram nonlinearity (for visualization)
+    g_bin_centers: np.ndarray
+    rate_vs_g: np.ndarray
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'a': self.a,
+            'b': self.b,
+            'a_norm': self.a_norm,
+            'log_likelihood': self.log_likelihood,
+            'null_log_likelihood': self.null_log_likelihood,
+            'bits_per_spike': self.deviance_explained,  # More descriptive name
+            'r_squared': self.r_squared,
+            'rectification_index': self.rectification_index,
+            'nonlinearity_index': self.nonlinearity_index,
+            'threshold_g': self.threshold_g,
+            'n_frames': self.n_frames,
+            'n_spikes': self.n_spikes,
+            'g_bin_centers': self.g_bin_centers,
+            'rate_vs_g': self.rate_vs_g,
+        }
+
+
+@dataclass
 class RFGeometry:
     """
     Container for receptive field geometry results.
@@ -192,6 +257,8 @@ class RFGeometry:
         gaussian_fit: 2D Gaussian fit results
         dog_fit: DoG center-surround fit results
         on_off_fit: Separate ON/OFF Gaussian fits
+        sta_time_course: Time course at RF center (1D array, from preprocessed data)
+        lnl_fit: Linear-Nonlinear model fit results
     """
     center_row: float
     center_col: float
@@ -204,6 +271,8 @@ class RFGeometry:
     gaussian_fit: Optional[GaussianFit] = None
     dog_fit: Optional[DoGFit] = None
     on_off_fit: Optional[OnOffFit] = None
+    sta_time_course: Optional[np.ndarray] = None
+    lnl_fit: Optional[LNLFit] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
@@ -505,6 +574,38 @@ def find_center_maxmin(sta_data: np.ndarray) -> Tuple[int, int, np.ndarray]:
     center_row, center_col = np.unravel_index(center_idx, diff_map.shape)
     
     return int(center_row), int(center_col), diff_map
+
+
+def compute_robust_extreme_map(sta_data: np.ndarray) -> np.ndarray:
+    """
+    Compute a robust extreme map using Savitzky-Golay filtered peak/trough detection.
+    
+    For each pixel, finds the robust peak and trough values using temporal filtering,
+    then takes the value with larger absolute magnitude (preserving sign).
+    This is more robust to noise than simple max/min, suitable for ON/OFF fitting.
+    
+    Args:
+        sta_data: 3D array (time, rows, cols) - preprocessed
+        
+    Returns:
+        2D array (rows, cols) with signed extreme values
+    """
+    n_frames, rows, cols = sta_data.shape
+    
+    # Compute robust signed extreme for each pixel
+    extreme_map = np.zeros((rows, cols))
+    
+    for r in range(rows):
+        for c in range(cols):
+            signal = sta_data[:, r, c]
+            peak_val, trough_val, _, _ = robust_peak_trough_detection(signal)
+            # Use the value with larger absolute magnitude, preserving sign
+            if abs(peak_val) > abs(trough_val):
+                extreme_map[r, c] = peak_val
+            else:
+                extreme_map[r, c] = trough_val
+    
+    return extreme_map
 
 
 # =============================================================================
@@ -985,10 +1086,10 @@ def extract_rf_geometry(
     1. Add 5-pixel zero padding
     2. Apply Gaussian blur (sigma=1.5)
     3. Baseline subtraction (frames 0-10)
-    4. Find center using extreme absolute value
+    4. Find center using diff_map (max-min with temporal filtering, more robust to noise)
     5. Fit 2D Gaussian
     6. Fit DoG center-surround model
-    7. Fit ON/OFF model
+    7. Fit ON/OFF model (uses robust extreme_map with temporal filtering)
     8. Convert coordinates back to original frame
     
     Args:
@@ -1010,13 +1111,12 @@ def extract_rf_geometry(
         smooth_temporal=True,
     )
     
-    # Step 5: Find center using extreme absolute value method
-    center_row_pad, center_col_pad, extreme_map = find_center_extreme(
-        preprocessed, frame_range=frame_range
-    )
+    # Step 5: Find center using diff_map (max-min with temporal filtering)
+    # This is more robust to noise than extreme value method
+    center_row_pad, center_col_pad, diff_map = find_center_maxmin(preprocessed)
     
-    # Also compute diff map for size estimation
-    _, _, diff_map = find_center_maxmin(preprocessed)
+    # Compute robust extreme_map for ON/OFF model fitting (uses temporal filtering)
+    extreme_map = compute_robust_extreme_map(preprocessed)
     
     # Step 6: Estimate size
     size_x, size_y, area, equiv_diam, diff_map_size = estimate_rf_size_maxmin(
@@ -1039,7 +1139,19 @@ def extract_rf_geometry(
     # Step 9: Fit ON/OFF model
     on_off_fit = fit_dog_on_off(extreme_map, (center_row_pad, center_col_pad))
     
-    # Step 10: Convert coordinates back to original frame
+    # Step 10: Extract STA time course at gaussian center (before coordinate conversion)
+    # Uses preprocessed (Gaussian filtered) data at rounded gaussian center
+    sta_time_course = None
+    if gaussian_fit is not None:
+        # Round gaussian center to nearest pixel (still in padded coords at this point)
+        tc_row = int(round(gaussian_fit.center_y))  # center_y = row
+        tc_col = int(round(gaussian_fit.center_x))  # center_x = col
+        # Ensure within bounds of preprocessed array
+        tc_row = max(0, min(tc_row, preprocessed.shape[1] - 1))
+        tc_col = max(0, min(tc_col, preprocessed.shape[2] - 1))
+        sta_time_course = preprocessed[:, tc_row, tc_col].copy()
+    
+    # Step 11: Convert coordinates back to original frame
     center_col_orig, center_row_orig = remove_padding_coords(center_col_pad, center_row_pad, pad)
     
     # Also adjust fit coordinates
@@ -1103,6 +1215,479 @@ def extract_rf_geometry(
         gaussian_fit=gaussian_fit,
         dog_fit=dog_fit,
         on_off_fit=on_off_fit,
+        sta_time_course=sta_time_course,
+    )
+
+
+# =============================================================================
+# LNL (Linear-Nonlinear) Model Fitting Functions
+# =============================================================================
+
+def compute_generator_signal(
+    sta: np.ndarray,
+    movie_array: np.ndarray,
+    cover_range: Tuple[int, int] = (-60, 0),
+) -> Tuple[np.ndarray, int, int]:
+    """
+    Compute generator signal g_t by convolving STA with stimulus movie.
+    
+    The generator signal is the dot product of the (mean-subtracted) STA filter 
+    with the (mean-subtracted) time-lagged stimulus at each frame:
+    
+        g_t = sum_{tau,x,y} (STA[tau,y,x] - STA_mean) * (s_{t-tau}[y,x] - s_mean)
+    
+    Mean-subtraction is critical: for binary stimuli (0/255), the raw STA has
+    mean ~127.5. Without centering, the generator signal would be dominated by
+    a DC component with no discriminative power.
+    
+    Args:
+        sta: STA array with shape (L, H, W) where L is temporal window length
+        movie_array: Stimulus movie with shape (T, H, W)
+        cover_range: Frame window relative to spike (start, end), e.g., (-60, 0)
+    
+    Returns:
+        Tuple of:
+        - generator_signal: Array of shape (n_valid_frames,) with g_t values
+        - first_valid_frame: First frame index where g_t is valid
+        - last_valid_frame: Last frame index (exclusive) where g_t is valid
+    """
+    L = sta.shape[0]  # Temporal window length
+    T = movie_array.shape[0]  # Total movie frames
+    
+    # Determine valid frame range
+    # For cover_range=(-60, 0), we need 60 frames of history
+    # So first valid frame is at index 60 (0-indexed: frame 60)
+    first_valid_frame = abs(cover_range[0])  # e.g., 60
+    last_valid_frame = T + cover_range[1]  # e.g., T if cover_range[1]=0
+    
+    if first_valid_frame >= last_valid_frame:
+        logger.warning(f"No valid frames for generator signal: first={first_valid_frame}, last={last_valid_frame}")
+        return np.array([]), first_valid_frame, last_valid_frame
+    
+    n_valid_frames = last_valid_frame - first_valid_frame
+    generator_signal = np.zeros(n_valid_frames, dtype=np.float32)
+    
+    # CRITICAL: Mean-subtract the STA to remove DC component
+    # For binary noise (0/255), raw STA mean is ~127.5
+    # The centered STA captures deviations that predict spikes
+    sta_centered = sta.astype(np.float32) - sta.mean()
+    sta_flat = sta_centered.ravel()
+    
+    # Also compute stimulus mean for centering (use global mean for efficiency)
+    stim_mean = float(movie_array.mean())
+    
+    # Compute g_t for each valid frame
+    for i, t in enumerate(range(first_valid_frame, last_valid_frame)):
+        # Extract time-lagged stimulus window: s_{t+cover_range[0]} to s_{t+cover_range[1]-1}
+        # For cover_range=(-60, 0), this is s_{t-60} to s_{t-1}
+        stim_window = movie_array[t + cover_range[0]:t + cover_range[1]]  # Shape: (L, H, W)
+        
+        # Center stimulus and compute dot product
+        stim_centered = stim_window.astype(np.float32).ravel() - stim_mean
+        generator_signal[i] = np.dot(sta_flat, stim_centered)
+    
+    return generator_signal, first_valid_frame, last_valid_frame
+
+
+def estimate_histogram_nonlinearity(
+    g_all: np.ndarray,
+    spike_frames: np.ndarray,
+    first_valid_frame: int,
+    dt: float,
+    n_bins: int = 50,
+    smooth_sigma: float = 1.0,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Estimate nonlinearity using histogram / Bayes rule method.
+    
+    Uses Bayes' rule:
+        p(spike|g) = p(g|spike) * p(spike) / p(g)
+    
+    Then converts to firing rate:
+        lambda(g) = p(spike|g) / dt
+    
+    Args:
+        g_all: Generator signal for all valid frames
+        spike_frames: Spike frame indices (absolute, not relative to g_all)
+        first_valid_frame: First valid frame index (to convert spike_frames to g_all indices)
+        dt: Time bin width in seconds (frame duration)
+        n_bins: Number of bins for histogram
+        smooth_sigma: Gaussian smoothing sigma for output curve
+    
+    Returns:
+        Tuple of:
+        - g_bin_centers: Bin centers for generator signal
+        - rate_vs_g: Estimated firing rate at each bin
+    """
+    from scipy.ndimage import gaussian_filter1d
+    
+    # Convert spike frames to indices in g_all
+    spike_indices = spike_frames - first_valid_frame
+    # Keep only spikes that fall within valid range
+    valid_spike_mask = (spike_indices >= 0) & (spike_indices < len(g_all))
+    spike_indices = spike_indices[valid_spike_mask].astype(int)
+    
+    if len(spike_indices) == 0:
+        logger.warning("No valid spikes for histogram nonlinearity estimation")
+        g_bin_centers = np.linspace(g_all.min(), g_all.max(), n_bins)
+        rate_vs_g = np.zeros(n_bins)
+        return g_bin_centers, rate_vs_g
+    
+    # Get generator values at spike times
+    g_at_spikes = g_all[spike_indices]
+    
+    # Compute histograms
+    g_min, g_max = g_all.min(), g_all.max()
+    # Add small margin to avoid edge effects
+    margin = (g_max - g_min) * 0.01
+    bin_edges = np.linspace(g_min - margin, g_max + margin, n_bins + 1)
+    g_bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    
+    # p(g): histogram of all generator values
+    hist_all, _ = np.histogram(g_all, bins=bin_edges)
+    # p(g|spike): histogram of generator values at spike times
+    hist_spike, _ = np.histogram(g_at_spikes, bins=bin_edges)
+    
+    # Avoid division by zero
+    hist_all_safe = np.maximum(hist_all, 1)
+    
+    # p(spike) = total spikes / total frames
+    p_spike = len(spike_indices) / len(g_all)
+    
+    # p(spike|g) via Bayes rule
+    # p(spike|g) = p(g|spike) * p(spike) / p(g)
+    # Using histogram counts: p(spike|g) ∝ hist_spike / hist_all
+    p_spike_given_g = hist_spike / hist_all_safe
+    
+    # Convert to rate: lambda(g) = p(spike|g) / dt
+    rate_vs_g = p_spike_given_g / dt
+    
+    # Smooth the curve
+    if smooth_sigma > 0:
+        rate_vs_g = gaussian_filter1d(rate_vs_g, sigma=smooth_sigma)
+    
+    return g_bin_centers.astype(np.float32), rate_vs_g.astype(np.float32)
+
+
+def fit_lnp_parametric(
+    g_all: np.ndarray,
+    spike_frames: np.ndarray,
+    first_valid_frame: int,
+    dt: float,
+) -> Tuple[float, float, float, float]:
+    """
+    Fit parametric LNP nonlinearity f(g) = exp(b + a*g) via Poisson MLE.
+    
+    Maximizes Poisson log-likelihood:
+        log L = sum_t [y_t * log(lambda_t) - lambda_t * dt]
+    
+    where lambda_t = exp(b + a * g_t)
+    
+    Args:
+        g_all: Generator signal for all valid frames
+        spike_frames: Spike frame indices (absolute)
+        first_valid_frame: First valid frame index
+        dt: Time bin width in seconds
+    
+    Returns:
+        Tuple of (a, b, log_likelihood, null_log_likelihood)
+    """
+    from scipy.optimize import minimize
+    
+    # Convert spike frames to per-frame spike counts
+    n_frames = len(g_all)
+    spike_indices = spike_frames - first_valid_frame
+    valid_spike_mask = (spike_indices >= 0) & (spike_indices < n_frames)
+    spike_indices = spike_indices[valid_spike_mask].astype(int)
+    
+    # Create spike count array
+    spike_counts = np.bincount(spike_indices, minlength=n_frames).astype(np.float32)
+    
+    total_spikes = spike_counts.sum()
+    
+    if total_spikes == 0:
+        logger.warning("No spikes for LNP fitting")
+        return 0.0, 0.0, -np.inf, -np.inf
+    
+    # Normalize generator signal for numerical stability
+    g_mean = g_all.mean()
+    g_std = g_all.std()
+    
+    logger.debug(f"Generator signal stats: mean={g_mean:.2f}, std={g_std:.2f}, "
+                 f"min={g_all.min():.2f}, max={g_all.max():.2f}")
+    
+    if g_std < 1e-10:
+        logger.warning("Generator signal has near-zero variance - STA may not be predictive")
+        g_std = 1.0
+    g_norm = (g_all - g_mean) / g_std
+    
+    # Initial parameters
+    mean_rate = total_spikes / (n_frames * dt)
+    b_init = np.log(max(mean_rate, 1e-10))
+    a_init = 1.0
+    
+    logger.debug(f"LNP fitting: {int(total_spikes)} spikes, {n_frames} frames, "
+                 f"mean_rate={mean_rate:.2f} Hz")
+    
+    def neg_log_likelihood(params):
+        a, b = params
+        # lambda_t = exp(b + a * g)
+        log_lambda = b + a * g_norm
+        # Clip for numerical stability
+        log_lambda = np.clip(log_lambda, -20, 20)
+        lambda_t = np.exp(log_lambda)
+        
+        # Poisson log-likelihood: y*log(lambda) - lambda*dt
+        # Add small epsilon to avoid log(0)
+        ll = np.sum(spike_counts * log_lambda - lambda_t * dt)
+        return -ll  # Minimize negative log-likelihood
+    
+    # Optimize
+    result = minimize(
+        neg_log_likelihood,
+        x0=[a_init, b_init],
+        method='L-BFGS-B',
+        bounds=[(-10, 10), (-20, 20)],
+    )
+    
+    a_opt, b_opt = result.x
+    log_likelihood = -result.fun
+    
+    # Transform a back to original scale (b already includes offset from normalization)
+    a_original = a_opt / g_std
+    b_original = b_opt - a_opt * g_mean / g_std
+    
+    # Null model log-likelihood (constant rate)
+    null_rate = total_spikes / (n_frames * dt)
+    null_ll = np.sum(spike_counts * np.log(max(null_rate, 1e-10)) - null_rate * dt)
+    
+    # Also return the normalized-space a for interpretability
+    # a_norm is the effect of 1 std change in generator signal on log-rate
+    return a_original, b_original, log_likelihood, null_ll, a_opt
+
+
+def compute_nonlinearity_metrics(
+    g_bin_centers: np.ndarray,
+    rate_vs_g: np.ndarray,
+) -> Tuple[float, float, float]:
+    """
+    Compute metrics that quantify the shape of the nonlinearity.
+    
+    Args:
+        g_bin_centers: Generator signal bin centers (original scale)
+        rate_vs_g: Firing rate at each bin (Hz)
+    
+    Returns:
+        Tuple of (rectification_index, nonlinearity_index, threshold_g)
+        
+        - rectification_index: Asymmetry of response (0=symmetric, 1=fully rectified)
+          Measures whether the neuron responds more to positive or negative g
+        
+        - nonlinearity_index: Deviation from linear fit (1 - R² of linear fit)
+          0 = perfectly linear, 1 = highly nonlinear
+        
+        - threshold_g: Generator signal value (in std units) where rate crosses mean
+          Indicates the threshold for response
+    """
+    # Handle edge cases
+    if len(g_bin_centers) < 5 or len(rate_vs_g) < 5:
+        return 0.0, 0.0, 0.0
+    
+    # Filter out invalid values
+    valid_mask = np.isfinite(rate_vs_g) & (rate_vs_g >= 0)
+    if valid_mask.sum() < 5:
+        return 0.0, 0.0, 0.0
+    
+    g = g_bin_centers[valid_mask]
+    rate = rate_vs_g[valid_mask]
+    
+    # Normalize g to std units for interpretability
+    g_mean = g.mean()
+    g_std = g.std()
+    if g_std > 0:
+        g_norm = (g - g_mean) / g_std
+    else:
+        g_norm = g - g_mean
+    
+    mean_rate = rate.mean()
+    
+    # 1. Rectification Index
+    # Compare response to positive vs negative generator signal
+    # RI = (rate_positive - rate_negative) / (rate_positive + rate_negative)
+    # Ranges from -1 (OFF cell) to +1 (ON cell), 0 = symmetric
+    pos_mask = g_norm > 0
+    neg_mask = g_norm < 0
+    
+    if pos_mask.sum() > 0 and neg_mask.sum() > 0:
+        rate_pos = rate[pos_mask].mean()
+        rate_neg = rate[neg_mask].mean()
+        if (rate_pos + rate_neg) > 0:
+            rectification_index = (rate_pos - rate_neg) / (rate_pos + rate_neg)
+        else:
+            rectification_index = 0.0
+    else:
+        rectification_index = 0.0
+    
+    # 2. Nonlinearity Index
+    # Fit a linear model and compute 1 - R²
+    # Higher values indicate more nonlinear (curved) relationship
+    try:
+        # Linear fit: rate = slope * g_norm + intercept
+        coeffs = np.polyfit(g_norm, rate, 1)
+        rate_linear_pred = np.polyval(coeffs, g_norm)
+        
+        ss_res = np.sum((rate - rate_linear_pred) ** 2)
+        ss_tot = np.sum((rate - mean_rate) ** 2)
+        
+        if ss_tot > 0:
+            r2_linear = 1 - ss_res / ss_tot
+            nonlinearity_index = 1 - max(0, r2_linear)  # Clamp R² to [0, 1]
+        else:
+            nonlinearity_index = 0.0
+    except Exception:
+        nonlinearity_index = 0.0
+    
+    # 3. Threshold
+    # Find g value (in std units) where rate crosses mean_rate
+    # Use linear interpolation to find the crossing point
+    try:
+        # Look for where rate crosses mean_rate from below
+        above_mean = rate >= mean_rate
+        crossings = np.where(np.diff(above_mean.astype(int)) == 1)[0]
+        
+        if len(crossings) > 0:
+            # Take the crossing closest to g=0
+            idx = crossings[np.argmin(np.abs(g_norm[crossings]))]
+            # Linear interpolation between idx and idx+1
+            g1, g2 = g_norm[idx], g_norm[idx + 1]
+            r1, r2 = rate[idx], rate[idx + 1]
+            if r2 != r1:
+                threshold_g = g1 + (mean_rate - r1) * (g2 - g1) / (r2 - r1)
+            else:
+                threshold_g = (g1 + g2) / 2
+        else:
+            # No crossing found, use median g where rate > mean
+            high_rate_mask = rate > mean_rate
+            if high_rate_mask.sum() > 0:
+                threshold_g = np.median(g_norm[high_rate_mask])
+            else:
+                threshold_g = 0.0
+    except Exception:
+        threshold_g = 0.0
+    
+    return float(rectification_index), float(nonlinearity_index), float(threshold_g)
+
+
+def fit_lnl_model(
+    sta: np.ndarray,
+    movie_array: np.ndarray,
+    spike_frames: np.ndarray,
+    cover_range: Tuple[int, int] = (-60, 0),
+    frame_rate: float = 15.0,
+    n_histogram_bins: int = 50,
+) -> Optional[LNLFit]:
+    """
+    Fit complete LNL model: compute generator signal and estimate nonlinearity.
+    
+    This is the main entry point for LNL fitting. It:
+    1. Computes the generator signal by convolving STA with stimulus
+    2. Estimates histogram-based nonlinearity via Bayes rule
+    3. Fits parametric LNP nonlinearity via Poisson MLE
+    4. Computes fit quality metrics
+    5. Computes nonlinearity shape metrics
+    
+    Args:
+        sta: STA array with shape (L, H, W)
+        movie_array: Stimulus movie with shape (T, H, W)
+        spike_frames: Spike frame indices
+        cover_range: Frame window relative to spike (start, end)
+        frame_rate: Stimulus frame rate in Hz
+        n_histogram_bins: Number of bins for histogram nonlinearity
+    
+    Returns:
+        LNLFit object with all fit results, or None if fitting fails
+    """
+    dt = 1.0 / frame_rate
+    
+    # Step 1: Compute generator signal
+    g_all, first_valid, last_valid = compute_generator_signal(sta, movie_array, cover_range)
+    
+    if len(g_all) == 0:
+        logger.warning("Cannot compute generator signal - no valid frames")
+        return None
+    
+    n_frames = len(g_all)
+    
+    # Count valid spikes
+    spike_indices = spike_frames - first_valid
+    valid_spike_mask = (spike_indices >= 0) & (spike_indices < n_frames)
+    n_spikes = int(valid_spike_mask.sum())
+    
+    if n_spikes < 10:
+        logger.warning(f"Too few spikes ({n_spikes}) for reliable LNL fitting")
+        return None
+    
+    # Step 2: Estimate histogram nonlinearity
+    g_bin_centers, rate_vs_g = estimate_histogram_nonlinearity(
+        g_all, spike_frames, first_valid, dt, n_bins=n_histogram_bins
+    )
+    
+    # Step 3: Fit parametric LNP
+    a, b, log_likelihood, null_ll, a_norm = fit_lnp_parametric(
+        g_all, spike_frames, first_valid, dt
+    )
+    
+    # Step 4: Compute fit quality metrics
+    # 
+    # Since we omit the constant -log(y!) term, our log-likelihoods can be positive.
+    # Use simpler metrics that are robust to this.
+    
+    spike_indices_valid = (spike_frames - first_valid)[valid_spike_mask].astype(int)
+    spike_counts = np.bincount(spike_indices_valid, minlength=n_frames).astype(np.float32)
+    
+    # Log-likelihood improvement (positive = model is better than null)
+    ll_improvement = log_likelihood - null_ll
+    
+    # Bits per spike: information gain over null model, normalized by spike count
+    # This is a standard metric for neural encoding models
+    if n_spikes > 0:
+        bits_per_spike = (log_likelihood - null_ll) / (n_spikes * np.log(2))
+    else:
+        bits_per_spike = 0.0
+    
+    # Use bits_per_spike as deviance_explained (more interpretable for Poisson models)
+    # Values > 0 indicate the model predicts better than the null
+    # Typical values for good LN models: 0.5 - 2.0 bits/spike
+    deviance_explained = float(bits_per_spike)
+    
+    # Predicted rate using original-scale parameters
+    predicted_rate = np.exp(b + a * g_all)
+    
+    # R-squared: correlation between predicted rate and spike counts
+    # Note: This will be low for sparse spike trains, which is expected
+    if np.std(spike_counts) > 0 and np.std(predicted_rate) > 0:
+        r_squared = float(np.corrcoef(spike_counts, predicted_rate)[0, 1] ** 2)
+    else:
+        r_squared = 0.0
+    
+    # Step 5: Compute nonlinearity metrics from histogram
+    rect_idx, nl_idx, thresh_g = compute_nonlinearity_metrics(g_bin_centers, rate_vs_g)
+    
+    return LNLFit(
+        a=float(a),
+        b=float(b),
+        a_norm=float(a_norm),
+        log_likelihood=float(log_likelihood),
+        null_log_likelihood=float(null_ll),
+        deviance_explained=float(deviance_explained),  # Actually bits_per_spike
+        r_squared=float(r_squared),
+        rectification_index=float(rect_idx),
+        nonlinearity_index=float(nl_idx),
+        threshold_g=float(thresh_g),
+        n_frames=n_frames,
+        n_spikes=n_spikes,
+        g_bin_centers=g_bin_centers,
+        rate_vs_g=rate_vs_g,
     )
 
 
@@ -1168,8 +1753,8 @@ def plot_unit_rf_geometry(
     preprocessed, pad, _ = preprocess_sta(sta_data, apply_padding=True, apply_blur=True, 
                                            subtract_baseline=True, smooth_temporal=True)
     
-    # Get extreme map
-    _, _, extreme_map = find_center_extreme(preprocessed, frame_range=FRAME_RANGE)
+    # Get extreme map (using robust temporal filtering)
+    extreme_map = compute_robust_extreme_map(preprocessed)
     if pad > 0:
         extreme_map_crop = extreme_map[pad:-pad, pad:-pad] if extreme_map.shape[0] > 2*pad else extreme_map
     else:

@@ -1,0 +1,94 @@
+{
+  "ipRGC": {
+    "ae_gmm": {
+      "optimal_k": 2.0,
+      "n_samples": 871,
+      "silhouette": 0.36800506711006165,
+      "calinski_harabasz": 204.78244018554688,
+      "davies_bouldin": 1.6104272992679414
+    },
+    "vae_gmm": {
+      "optimal_k": 2.0,
+      "n_samples": 871,
+      "silhouette": 0.4115050733089447,
+      "calinski_harabasz": 247.5075225830078,
+      "davies_bouldin": 1.2604629318194391
+    },
+    "dec": {
+      "optimal_k": 2.0,
+      "n_samples": 871,
+      "silhouette": 0.6981363892555237,
+      "calinski_harabasz": 190.30392456054688,
+      "davies_bouldin": 0.4597786958737153
+    }
+  },
+  "DSGC": {
+    "ae_gmm": {
+      "optimal_k": 3.0,
+      "n_samples": 1849,
+      "silhouette": 0.2647877633571625,
+      "calinski_harabasz": 985.3471069335938,
+      "davies_bouldin": 2.7467716917653
+    },
+    "vae_gmm": {
+      "optimal_k": 2.0,
+      "n_samples": 1849,
+      "silhouette": 0.13765685260295868,
+      "calinski_harabasz": 152.17422485351562,
+      "davies_bouldin": 2.718369098228591
+    },
+    "dec": {
+      "optimal_k": 3.0,
+      "n_samples": 1849,
+      "silhouette": 0.14426329731941223,
+      "calinski_harabasz": 259.6478576660156,
+      "davies_bouldin": 2.2704601897755814
+    }
+  },
+  "OSGC": {
+    "ae_gmm": {
+      "optimal_k": 3.0,
+      "n_samples": 1801,
+      "silhouette": 0.06822992861270905,
+      "calinski_harabasz": 531.3148803710938,
+      "davies_bouldin": 2.037991366575872
+    },
+    "vae_gmm": {
+      "optimal_k": 2.0,
+      "n_samples": 1801,
+      "silhouette": 0.14431920647621155,
+      "calinski_harabasz": 209.14622497558594,
+      "davies_bouldin": 2.409014574749505
+    },
+    "dec": {
+      "optimal_k": 3.0,
+      "n_samples": 1801,
+      "silhouette": 0.3481139540672302,
+      "calinski_harabasz": 11.895403861999512,
+      "davies_bouldin": 1.104117427413246
+    }
+  },
+  "Other": {
+    "ae_gmm": {
+      "optimal_k": 4.0,
+      "n_samples": 3523,
+      "silhouette": 0.03852338716387749,
+      "calinski_harabasz": 356.32806396484375,
+      "davies_bouldin": 3.8371012160611064
+    },
+    "vae_gmm": {
+      "optimal_k": 2.0,
+      "n_samples": 3523,
+      "silhouette": 0.20532479882240295,
+      "calinski_harabasz": 97.30685424804688,
+      "davies_bouldin": 4.3815693312207635
+    },
+    "dec": {
+      "optimal_k": 4.0,
+      "n_samples": 3523,
+      "silhouette": 0.0693821907043457,
+      "calinski_harabasz": 264.2979431152344,
+      "davies_bouldin": 1.8379538915845834
+    }
+  }
+}

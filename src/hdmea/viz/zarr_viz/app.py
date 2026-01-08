@@ -1302,18 +1302,19 @@ def render_array_view(node: TreeNode) -> None:
                 st.markdown("---")
                 st.markdown("### 📈 Peak Location Time Series")
                 
-                # Find (x, y) with largest dynamic range along t axis
+                # Find (row, col) with largest dynamic range along t axis
+                # Note: For 3D arrays with shape (t, rows, cols), unravel_index returns (row, col)
                 array_data = np.asarray(array)
                 dynamic_range = np.max(array_data, axis=0) - np.min(array_data, axis=0)
                 peak_idx = np.unravel_index(np.argmax(dynamic_range), dynamic_range.shape)
-                peak_x, peak_y = peak_idx
+                peak_row, peak_col = peak_idx
                 
                 # Extract time series at peak location
-                time_series = array_data[:, peak_x, peak_y]
+                time_series = array_data[:, peak_row, peak_col]
                 
-                # Display peak location info
+                # Display peak location info (row=y, col=x to match heatmap axes)
                 st.markdown(
-                    f"**Peak Location**: (x={peak_x}, y={peak_y}) | "
+                    f"**Peak Location**: (row={peak_row}, col={peak_col}) | "
                     f"**Dynamic Range**: {dynamic_range[peak_idx]:.4f} | "
                     f"**Min**: {time_series.min():.4f} | **Max**: {time_series.max():.4f}"
                 )
@@ -1328,7 +1329,7 @@ def render_array_view(node: TreeNode) -> None:
                 ))
                 fig_line.update_layout(
                     title=dict(
-                        text=f"Time Series at Peak Location ({peak_x}, {peak_y})",
+                        text=f"Time Series at Peak Location (row={peak_row}, col={peak_col})",
                         x=0.5,
                         xanchor="center",
                     ),

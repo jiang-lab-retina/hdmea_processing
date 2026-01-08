@@ -1,0 +1,18 @@
+{
+  "DS": {
+    "optimal_k": 38,
+    "bootstrap_median_correlation": null,
+    "bootstrap_iterations": 20,
+    "sample_fraction": 0.9,
+    "is_stable": null,
+    "all_correlations": []
+  },
+  "non-DS": {
+    "optimal_k": 47,
+    "bootstrap_median_correlation": null,
+    "bootstrap_iterations": 20,
+    "sample_fraction": 0.9,
+    "is_stable": null,
+    "all_correlations": []
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "params": {
+    "latent_dim": 32,
+    "learning_rate": 3.0157270781989878e-05,
+    "weight_decay": 0.00011061638285576272,
+    "batch_size": 256,
+    "n_conv_layers": 3,
+    "base_channels": 64,
+    "dropout": 0.3686683908126888
+  },
+  "silhouette": 0.17243120074272156,
+  "optimal_k": 14,
+  "n_trials": 50
+}

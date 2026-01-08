@@ -1,0 +1,66 @@
+{
+  "Other": {
+    "optimized_ae": {
+      "optimal_k": 12,
+      "n_samples": 7670,
+      "silhouette": 0.13287939131259918,
+      "calinski_harabasz": 953.5846724095854,
+      "davies_bouldin": 1.8889637132435793
+    },
+    "contrastive_ae": {
+      "optimal_k": 12,
+      "n_samples": 7670,
+      "silhouette": 0.40391185879707336,
+      "calinski_harabasz": 3379.284514438257,
+      "davies_bouldin": 0.9630729037547145
+    }
+  },
+  "OSGC": {
+    "optimized_ae": {
+      "optimal_k": 8,
+      "n_samples": 3662,
+      "silhouette": 0.15780965983867645,
+      "calinski_harabasz": 557.438528261469,
+      "davies_bouldin": 1.8823328251722755
+    },
+    "contrastive_ae": {
+      "optimal_k": 8,
+      "n_samples": 3662,
+      "silhouette": 0.3855847120285034,
+      "calinski_harabasz": 2638.539555385895,
+      "davies_bouldin": 1.1034062152883055
+    }
+  },
+  "DSGC": {
+    "optimized_ae": {
+      "optimal_k": 8,
+      "n_samples": 3672,
+      "silhouette": 0.22057819366455078,
+      "calinski_harabasz": 1064.0221547620124,
+      "davies_bouldin": 1.6817292249981266
+    },
+    "contrastive_ae": {
+      "optimal_k": 9,
+      "n_samples": 3672,
+      "silhouette": 0.37964296340942383,
+      "calinski_harabasz": 3221.679134244412,
+      "davies_bouldin": 1.0587379434433775
+    }
+  },
+  "ipRGC": {
+    "optimized_ae": {
+      "optimal_k": 8,
+      "n_samples": 1968,
+      "silhouette": 0.19978931546211243,
+      "calinski_harabasz": 414.1011030945748,
+      "davies_bouldin": 1.3618371896864834
+    },
+    "contrastive_ae": {
+      "optimal_k": 8,
+      "n_samples": 1968,
+      "silhouette": 0.4307417869567871,
+      "calinski_harabasz": 1346.3894854194211,
+      "davies_bouldin": 0.7596497296577045
+    }
+  }
+}
