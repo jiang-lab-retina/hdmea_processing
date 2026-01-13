@@ -496,10 +496,9 @@ def generate_all_plots(
 
 
 if __name__ == "__main__":
-    # Help mode: print available functions
+    # Demo mode: generate sample plots with synthetic data
     print("Visualization module for divide_conquer_method pipeline")
-    print("This module is not meant to be run directly.")
-    print("Use run_pipeline.py to generate plots, or import this module.")
+    print("Run via run_pipeline.py to generate actual plots.")
     print("\nAvailable functions:")
     print("  - plot_bic_curve(bic_data, output_path)")
     print("  - plot_umap_embeddings(embeddings, labels, output_path)")
