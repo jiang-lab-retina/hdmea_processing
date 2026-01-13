@@ -1,0 +1,9 @@
+{
+  "group": "DSGC",
+  "k": 4,
+  "gmm_purity": 0.9,
+  "dec_purity": 0.9,
+  "purity_improvement": 0.0,
+  "gmm_top_enrichment": 2.222222222222222,
+  "dec_top_enrichment": 3.333333333333333
+}

@@ -7,11 +7,21 @@ Implements:
 """
 
 import logging
+import sys
+from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
 
-from .. import config
+# Support direct execution
+if __name__ == "__main__" and __package__ is None:
+    _this_dir = Path(__file__).resolve().parent.parent
+    _parent_dir = _this_dir.parent
+    if str(_parent_dir) not in sys.path:
+        sys.path.insert(0, str(_parent_dir))
+    __package__ = "divide_conquer_method.validation"
+
+from divide_conquer_method import config
 
 logger = logging.getLogger(__name__)
 
@@ -195,3 +205,39 @@ def get_iprgc_labels(
                f"({100*n_iprgc/len(df):.1f}%) with QI > {qi_threshold}")
     
     return iprgc_labels
+
+
+if __name__ == "__main__":
+    # Demo with synthetic data
+    logging.basicConfig(level=logging.INFO)
+    
+    print("ipRGC Metrics Demo")
+    print("=" * 40)
+    
+    # Create synthetic data: 100 cells, 10 clusters, 10% ipRGC
+    np.random.seed(42)
+    n_cells = 100
+    n_clusters = 10
+    
+    cluster_labels = np.random.randint(0, n_clusters, size=n_cells)
+    
+    # Make clusters 0 and 5 enriched for ipRGCs
+    iprgc_labels = np.zeros(n_cells, dtype=bool)
+    iprgc_labels[cluster_labels == 0] = np.random.rand((cluster_labels == 0).sum()) > 0.3  # 70% ipRGC
+    iprgc_labels[cluster_labels == 5] = np.random.rand((cluster_labels == 5).sum()) > 0.5  # 50% ipRGC
+    
+    print(f"\nSynthetic data: {n_cells} cells, {n_clusters} clusters")
+    print(f"Total ipRGCs: {iprgc_labels.sum()} ({100*iprgc_labels.mean():.1f}%)")
+    
+    # Compute metrics
+    metrics = compute_iprgc_metrics(cluster_labels, iprgc_labels)
+    
+    print(f"\nResults:")
+    print(f"  Purity: {metrics['purity']:.3f}")
+    print(f"  Baseline prevalence: {metrics['baseline_prevalence']:.3f}")
+    print(f"\nTop enriched clusters:")
+    for i, cluster_info in enumerate(metrics['top_enriched']):
+        print(f"  {i+1}. Cluster {cluster_info['cluster']}: "
+              f"enrichment={cluster_info['enrichment']:.2f}x, "
+              f"fraction={cluster_info['fraction']:.2f}, "
+              f"n={cluster_info['n_cells']}")

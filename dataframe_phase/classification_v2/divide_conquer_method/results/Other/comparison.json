@@ -1,0 +1,9 @@
+{
+  "group": "Other",
+  "k": 6,
+  "gmm_purity": 0.8793103448275862,
+  "dec_purity": 0.8793103448275862,
+  "purity_improvement": 0.0,
+  "gmm_top_enrichment": 2.7619047619047614,
+  "dec_top_enrichment": 2.3200000000000003
+}
