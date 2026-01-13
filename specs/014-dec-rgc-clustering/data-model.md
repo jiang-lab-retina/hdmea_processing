@@ -4,6 +4,8 @@
 
 ### Source: Parquet File
 
+**Default input file**: `dataframe_phase/extract_feature/firing_rate_with_all_features_loaded_extracted20260104.parquet`
+
 Same schema as `Autoencoder_method`, with these key columns:
 
 #### Required Metadata Columns

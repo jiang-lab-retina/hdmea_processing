@@ -223,14 +223,23 @@ A researcher wants to regenerate plots (UMAP, BIC curves, prototypes) from saved
 
 ---
 
+## Clarifications
+
+### Session 2026-01-13
+
+- Q: What is the default input file path? → A: `dataframe_phase/extract_feature/firing_rate_with_all_features_loaded_extracted20260104.parquet`
+
+---
+
 ## Assumptions
 
-1. Input parquet file follows the same schema as `Autoencoder_method` (column names, trace formats)
-2. All cells have complete trace data for all 10 segments
-3. GPU (CUDA) is available for training; CPU fallback is supported but slower
-4. Minimum viable group size is 50 cells (same as Autoencoder_method)
-5. Expected cluster count range: 1-40 for most groups (configurable per group)
-6. DEC uses Student-t kernel for soft assignments (standard DEC formulation)
+1. **Default input file**: `dataframe_phase/extract_feature/firing_rate_with_all_features_loaded_extracted20260104.parquet` (same as Autoencoder_method)
+2. Input parquet file follows the same schema as `Autoencoder_method` (column names, trace formats)
+3. All cells have complete trace data for all 10 segments
+4. GPU (CUDA) is available for training; CPU fallback is supported but slower
+5. Minimum viable group size is 50 cells (same as Autoencoder_method)
+6. Expected cluster count range: 1-40 for most groups (configurable per group)
+7. DEC uses Student-t kernel for soft assignments (standard DEC formulation)
 
 ---
 
