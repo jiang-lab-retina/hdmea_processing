@@ -17,16 +17,25 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from . import config
-from .data_loader import load_and_filter_data
-from .grouping import assign_groups, filter_group, get_group_stats
-from .preprocessing import preprocess_all_segments, get_segment_lengths
-from .train import train_autoencoder, load_model
-from .embed import extract_embeddings, standardize_embeddings
-from .clustering.gmm_bic import fit_gmm_bic, select_k_min_bic, save_k_selection, load_gmm_results
-from .clustering.dec_refine import refine_with_dec, load_dec_results
-from .validation.iprgc_metrics import compute_iprgc_metrics, get_iprgc_labels
-from . import evaluation
+# Support both direct execution and module execution
+if __name__ == "__main__" and __package__ is None:
+    # Running directly: add parent to path
+    _this_dir = Path(__file__).resolve().parent
+    _parent_dir = _this_dir.parent
+    if str(_parent_dir) not in sys.path:
+        sys.path.insert(0, str(_parent_dir))
+    __package__ = "divide_conquer_method"
+
+from divide_conquer_method import config
+from divide_conquer_method.data_loader import load_and_filter_data
+from divide_conquer_method.grouping import assign_groups, filter_group, get_group_stats
+from divide_conquer_method.preprocessing import preprocess_all_segments, get_segment_lengths
+from divide_conquer_method.train import train_autoencoder, load_model
+from divide_conquer_method.embed import extract_embeddings, standardize_embeddings
+from divide_conquer_method.clustering.gmm_bic import fit_gmm_bic, select_k_min_bic, save_k_selection, load_gmm_results
+from divide_conquer_method.clustering.dec_refine import refine_with_dec, load_dec_results
+from divide_conquer_method.validation.iprgc_metrics import compute_iprgc_metrics, get_iprgc_labels
+from divide_conquer_method import evaluation
 
 # Setup logging
 logging.basicConfig(
@@ -92,7 +101,7 @@ def main(
     # Visualization-only mode
     if visualize_only:
         logger.info("Visualization-only mode: regenerating plots from saved artifacts")
-        from . import visualization
+        from divide_conquer_method import visualization
         
         for grp in groups:
             artifacts = evaluation.load_artifacts_for_visualization(
@@ -314,7 +323,7 @@ def _process_single_group(
         logger.info("-" * 40)
         logger.info("Step 8: Generating plots")
         
-        from . import visualization
+        from divide_conquer_method import visualization
         
         artifacts = {
             'embeddings_initial': embeddings_std,
