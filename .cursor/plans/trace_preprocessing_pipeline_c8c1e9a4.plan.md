@@ -37,8 +37,6 @@ Replace the 8 direction columns with their corrected versions (using 3-digit ang
 # ... etc for all 8 directions
 ```
 
-
-
 ### 2. Update data_loader.py: Add Preprocessing
 
 Add a `preprocess_trace()` function that:

@@ -32,8 +32,6 @@ class RFGeometry:
     sta_time_course: Optional[np.ndarray] = None  # Time course at center (1D array)
 ```
 
-
-
 ### 2. Update `extract_rf_geometry` function in [rf_sta_measure.py](Projects/rf_sta_measure/rf_sta_measure.py)
 
 After the Gaussian fitting (around line 1065), add extraction of time course:
@@ -70,8 +68,6 @@ if geometry.sta_time_course is not None:
     result['sta_time_course'] = geometry.sta_time_course
 ```
 
-
-
 ## Data Flow
 
 ```mermaid
@@ -84,7 +80,5 @@ flowchart TD
     F --> G[Store in RFGeometry]
     G --> H[Save to HDF5 via _geometry_to_dict]
 ```
-
-
 
 ## Output Location

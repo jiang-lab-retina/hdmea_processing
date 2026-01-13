@@ -1,0 +1,48 @@
+{
+  "cv_score": 0.7596304446955728,
+  "turns": [
+    {
+      "turn_name": "omit_axon_type",
+      "omitted_label": "axon_type",
+      "active_labels": [
+        "ds_cell",
+        "iprgc"
+      ],
+      "purity": 0.7095104978290608,
+      "n_groups": 4,
+      "n_clusters": 96,
+      "n_cells": 16813,
+      "duration_seconds": 844.831312,
+      "description": "Omit AC/RGC split - test if clusters naturally separate axon types"
+    },
+    {
+      "turn_name": "omit_ds_cell",
+      "omitted_label": "ds_cell",
+      "active_labels": [
+        "axon_type",
+        "iprgc"
+      ],
+      "purity": 0.6985665853803604,
+      "n_groups": 4,
+      "n_clusters": 103,
+      "n_cells": 16813,
+      "duration_seconds": 854.330179,
+      "description": "Omit DS/non-DS split - test if clusters naturally separate DS cells"
+    },
+    {
+      "turn_name": "omit_iprgc",
+      "omitted_label": "iprgc",
+      "active_labels": [
+        "axon_type",
+        "ds_cell"
+      ],
+      "purity": 0.8708142508772974,
+      "n_groups": 4,
+      "n_clusters": 102,
+      "n_cells": 16813,
+      "duration_seconds": 849.189096,
+      "description": "Omit ipRGC split - test if clusters naturally separate ipRGC cells"
+    }
+  ],
+  "total_duration_seconds": 2548.372056
+}

@@ -85,3 +85,9 @@ credentials/
 *.pkl
 *.csv
 *.pth
+*.pt
+
+# Autoencoder pipeline outputs
+dataframe_phase/classification_v2/Autoencoder_method/models_saved/
+dataframe_phase/classification_v2/Autoencoder_method/results/
+dataframe_phase/classification_v2/Autoencoder_method/plots/
