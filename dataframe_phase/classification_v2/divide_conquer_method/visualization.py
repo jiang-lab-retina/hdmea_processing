@@ -9,6 +9,7 @@ Includes:
 """
 
 import logging
+import sys
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -17,7 +18,15 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import umap
 
-from . import config
+# Support direct execution
+if __name__ == "__main__" and __package__ is None:
+    _this_dir = Path(__file__).resolve().parent
+    _parent_dir = _this_dir.parent
+    if str(_parent_dir) not in sys.path:
+        sys.path.insert(0, str(_parent_dir))
+    __package__ = "divide_conquer_method"
+
+from divide_conquer_method import config
 
 logger = logging.getLogger(__name__)
 
@@ -484,3 +493,16 @@ def generate_all_plots(
             plt.close()
     
     logger.info(f"Generated all plots in {output_dir}")
+
+
+if __name__ == "__main__":
+    # Demo mode: generate sample plots with synthetic data
+    print("Visualization module for divide_conquer_method pipeline")
+    print("Run via run_pipeline.py to generate actual plots.")
+    print("\nAvailable functions:")
+    print("  - plot_bic_curve(bic_data, output_path)")
+    print("  - plot_umap_embeddings(embeddings, labels, output_path)")
+    print("  - plot_umap_comparison(emb_gmm, labels_gmm, emb_dec, labels_dec, output_path)")
+    print("  - plot_iprgc_enrichment(metrics, output_path)")
+    print("  - plot_cluster_prototypes(segments, labels, cluster_id, output_path)")
+    print("  - generate_all_plots(artifacts, output_dir, group)")
