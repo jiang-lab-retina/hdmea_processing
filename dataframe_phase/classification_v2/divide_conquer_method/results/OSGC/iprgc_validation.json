@@ -1,0 +1,56 @@
+{
+  "group": "OSGC",
+  "baseline_prevalence": 0.10078578749572942,
+  "initial_gmm": {
+    "purity": 0.8992142125042706,
+    "top_enriched": [
+      {
+        "cluster": 2,
+        "n_cells": 134,
+        "n_iprgc": 39,
+        "fraction": 0.291044776119403,
+        "enrichment": 2.8877561345813305
+      },
+      {
+        "cluster": 11,
+        "n_cells": 138,
+        "n_iprgc": 38,
+        "fraction": 0.2753623188405797,
+        "enrichment": 2.732154261852125
+      },
+      {
+        "cluster": 6,
+        "n_cells": 113,
+        "n_iprgc": 29,
+        "fraction": 0.25663716814159293,
+        "enrichment": 2.5463626818659066
+      }
+    ]
+  },
+  "dec_refined": {
+    "purity": 0.9002391527160916,
+    "top_enriched": [
+      {
+        "cluster": 2,
+        "n_cells": 1,
+        "n_iprgc": 1,
+        "fraction": 1.0,
+        "enrichment": 9.922033898305084
+      },
+      {
+        "cluster": 9,
+        "n_cells": 4,
+        "n_iprgc": 3,
+        "fraction": 0.75,
+        "enrichment": 7.441525423728813
+      },
+      {
+        "cluster": 7,
+        "n_cells": 3,
+        "n_iprgc": 1,
+        "fraction": 0.3333333333333333,
+        "enrichment": 3.3073446327683613
+      }
+    ]
+  }
+}

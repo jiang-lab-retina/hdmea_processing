@@ -125,9 +125,9 @@ DEVICE = "cuda"
 
 # Maximum k per group
 K_MAX: Dict[str, int] = {
-    "DSGC": 40,
-    "OSGC": 20,
-    "Other": 80,
+    "DSGC": 30,
+    "OSGC": 30,
+    "Other": 30,
 }
 
 # K range starts from 1
@@ -147,7 +147,7 @@ GMM_USE_GPU = True  # Use GPU-accelerated GMM if available
 DEC_UPDATE_INTERVAL = 10  # Update target distribution every N iterations
 DEC_MAX_ITERATIONS = 200  # Maximum DEC iterations
 DEC_CONVERGENCE_THRESHOLD = 0.001  # Stop when assignment change < threshold
-DEC_RECONSTRUCTION_WEIGHT = 0.1  # IDEC-style reconstruction term (gamma)
+DEC_RECONSTRUCTION_WEIGHT = 1 #0.1  # IDEC-style reconstruction term (gamma)
 DEC_ALPHA = 1.0  # Student-t degrees of freedom
 DEC_LEARNING_RATE = 1e-4  # Learning rate for DEC optimization
 

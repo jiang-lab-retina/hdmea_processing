@@ -1,55 +1,55 @@
 {
   "group": "DSGC",
-  "baseline_prevalence": 0.1,
+  "baseline_prevalence": 0.13714047519799916,
   "initial_gmm": {
-    "purity": 0.9,
+    "purity": 0.8628595248020008,
     "top_enriched": [
       {
         "cluster": 2,
-        "n_cells": 9,
-        "n_iprgc": 2,
-        "fraction": 0.2222222222222222,
-        "enrichment": 2.222222222222222
+        "n_cells": 78,
+        "n_iprgc": 39,
+        "fraction": 0.5,
+        "enrichment": 3.645896656534955
+      },
+      {
+        "cluster": 6,
+        "n_cells": 210,
+        "n_iprgc": 87,
+        "fraction": 0.4142857142857143,
+        "enrichment": 3.0208858011289625
       },
       {
         "cluster": 3,
-        "n_cells": 18,
-        "n_iprgc": 2,
-        "fraction": 0.1111111111111111,
-        "enrichment": 1.111111111111111
-      },
-      {
-        "cluster": 1,
-        "n_cells": 10,
-        "n_iprgc": 1,
-        "fraction": 0.1,
-        "enrichment": 1.0
+        "n_cells": 192,
+        "n_iprgc": 78,
+        "fraction": 0.40625,
+        "enrichment": 2.9622910334346506
       }
     ]
   },
   "dec_refined": {
-    "purity": 0.9,
+    "purity": 0.8641100458524386,
     "top_enriched": [
       {
-        "cluster": 2,
-        "n_cells": 12,
-        "n_iprgc": 4,
-        "fraction": 0.3333333333333333,
-        "enrichment": 3.333333333333333
-      },
-      {
         "cluster": 3,
-        "n_cells": 18,
+        "n_cells": 1,
         "n_iprgc": 1,
-        "fraction": 0.05555555555555555,
-        "enrichment": 0.5555555555555555
+        "fraction": 1.0,
+        "enrichment": 7.29179331306991
       },
       {
-        "cluster": 0,
-        "n_cells": 20,
-        "n_iprgc": 0,
-        "fraction": 0.0,
-        "enrichment": 0.0
+        "cluster": 10,
+        "n_cells": 4,
+        "n_iprgc": 3,
+        "fraction": 0.75,
+        "enrichment": 5.468844984802432
+      },
+      {
+        "cluster": 6,
+        "n_cells": 15,
+        "n_iprgc": 9,
+        "fraction": 0.6,
+        "enrichment": 4.375075987841946
       }
     ]
   }
