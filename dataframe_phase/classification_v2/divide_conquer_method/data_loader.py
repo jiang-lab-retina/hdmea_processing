@@ -88,6 +88,7 @@ def load_and_filter_data(
     trace_cols = _get_required_trace_columns()
     trace_cols_present = [c for c in trace_cols if c in df.columns]
     
+    total_none_removed = 0
     for col in trace_cols_present:
         # Check for None values in trace column (not NaN - these are object arrays)
         none_mask = df[col].apply(lambda x: x is None)
@@ -95,7 +96,12 @@ def load_and_filter_data(
         if none_count > 0:
             reject_reasons[f"none_{col}"] = none_count
             df = df[~none_mask].copy()
-            logger.info(f"  Removed {none_count} cells with None in {col}")
+            total_none_removed += none_count
+            logger.warning(f"  Removed {none_count} cells with None in trace column '{col}'")
+    
+    if total_none_removed > 0:
+        logger.warning(f"Total {total_none_removed} cells removed due to None trace values. "
+                      f"Check data source for missing recordings.")
     
     final_count = len(df)
     total_removed = initial_count - final_count
