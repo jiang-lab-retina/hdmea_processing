@@ -24,12 +24,12 @@
 
 **Purpose**: Project initialization and package structure
 
-- [ ] T001 Create package directory structure in `dataframe_phase/classification_v2/divide_conquer_method/`
-- [ ] T002 Create `__init__.py` with package exports in `divide_conquer_method/__init__.py`
-- [ ] T003 [P] Create `models/__init__.py` subpackage init
-- [ ] T004 [P] Create `clustering/__init__.py` subpackage init
-- [ ] T005 [P] Create `validation/__init__.py` subpackage init
-- [ ] T006 Create output directories: `results/`, `plots/`, `models_saved/`
+- [x] T001 Create package directory structure in `dataframe_phase/classification_v2/divide_conquer_method/`
+- [x] T002 Create `__init__.py` with package exports in `divide_conquer_method/__init__.py`
+- [x] T003 [P] Create `models/__init__.py` subpackage init
+- [x] T004 [P] Create `clustering/__init__.py` subpackage init
+- [x] T005 [P] Create `validation/__init__.py` subpackage init
+- [x] T006 Create output directories: `results/`, `plots/`, `models_saved/`
 
 ---
 
@@ -41,30 +41,30 @@
 
 ### Configuration
 
-- [ ] T007 Create `config.py` with all parameters (DS/OS thresholds, K_MAX, DEC settings) in `divide_conquer_method/config.py`
+- [x] T007 Create `config.py` with all parameters (DS/OS thresholds, K_MAX, DEC settings) in `divide_conquer_method/config.py`
 
 ### Data Loading (Reuse + Modify)
 
-- [ ] T008 Copy and adapt `data_loader.py` from Autoencoder_method to `divide_conquer_method/data_loader.py` - add RGC-only filter
-- [ ] T009 Create `grouping.py` with DS > OS priority assignment in `divide_conquer_method/grouping.py`
+- [x] T008 Copy and adapt `data_loader.py` from Autoencoder_method to `divide_conquer_method/data_loader.py` - add RGC-only filter
+- [x] T009 Create `grouping.py` with DS > OS priority assignment in `divide_conquer_method/grouping.py`
 
 ### Preprocessing (Full Reuse)
 
-- [ ] T010 Copy `preprocessing.py` from Autoencoder_method to `divide_conquer_method/preprocessing.py` - no modifications needed
+- [x] T010 Copy `preprocessing.py` from Autoencoder_method to `divide_conquer_method/preprocessing.py` - no modifications needed
 
 ### Model Architecture (Full Reuse)
 
-- [ ] T011 [P] Copy `models/encoders.py` from Autoencoder_method to `divide_conquer_method/models/encoders.py`
-- [ ] T012 [P] Copy `models/decoders.py` from Autoencoder_method to `divide_conquer_method/models/decoders.py`
-- [ ] T013 [P] Copy and simplify `models/autoencoder.py` from Autoencoder_method to `divide_conquer_method/models/autoencoder.py` - remove SupCon/purity integration
+- [x] T011 [P] Copy `models/encoders.py` from Autoencoder_method to `divide_conquer_method/models/encoders.py`
+- [x] T012 [P] Copy `models/decoders.py` from Autoencoder_method to `divide_conquer_method/models/decoders.py`
+- [x] T013 [P] Copy and simplify `models/autoencoder.py` from Autoencoder_method to `divide_conquer_method/models/autoencoder.py` - remove SupCon/purity integration
 
 ### Training (Simplify)
 
-- [ ] T014 Create simplified `train.py` with reconstruction-only loss in `divide_conquer_method/train.py`
+- [x] T014 Create simplified `train.py` with reconstruction-only loss in `divide_conquer_method/train.py`
 
 ### Embedding Extraction (Reuse)
 
-- [ ] T015 Copy `embed.py` from Autoencoder_method to `divide_conquer_method/embed.py`
+- [x] T015 Copy `embed.py` from Autoencoder_method to `divide_conquer_method/embed.py`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -78,26 +78,26 @@
 
 ### GMM/BIC Clustering
 
-- [ ] T016 [P] [US1] Copy `models/gpu_gmm.py` from Autoencoder_method to `divide_conquer_method/models/gpu_gmm.py`
-- [ ] T017 [US1] Create `clustering/gmm_bic.py` with fit_gmm_bic() and select_k_min_bic() in `divide_conquer_method/clustering/gmm_bic.py`
+- [x] T016 [P] [US1] Copy `models/gpu_gmm.py` from Autoencoder_method to `divide_conquer_method/models/gpu_gmm.py`
+- [x] T017 [US1] Create `clustering/gmm_bic.py` with fit_gmm_bic() and select_k_min_bic() in `divide_conquer_method/clustering/gmm_bic.py`
 
 ### DEC Implementation (New)
 
-- [ ] T018 [US1] Create `models/dec.py` with DECLayer (Student-t kernel, soft assignments) in `divide_conquer_method/models/dec.py`
-- [ ] T019 [US1] Create `clustering/dec_refine.py` with refine_with_dec() training loop in `divide_conquer_method/clustering/dec_refine.py`
+- [x] T018 [US1] Create `models/dec.py` with DECLayer (Student-t kernel, soft assignments) in `divide_conquer_method/models/dec.py`
+- [x] T019 [US1] Create `clustering/dec_refine.py` with refine_with_dec() training loop in `divide_conquer_method/clustering/dec_refine.py`
 
 ### ipRGC Validation (New)
 
-- [ ] T020 [US1] Create `validation/iprgc_metrics.py` with compute_iprgc_metrics(), compute_enrichment(), compute_purity() in `divide_conquer_method/validation/iprgc_metrics.py`
+- [x] T020 [US1] Create `validation/iprgc_metrics.py` with compute_iprgc_metrics(), compute_enrichment(), compute_purity() in `divide_conquer_method/validation/iprgc_metrics.py`
 
 ### Output Saving
 
-- [ ] T021 [US1] Create `evaluation.py` with save_embeddings(), save_cluster_assignments(), save_k_selection() in `divide_conquer_method/evaluation.py`
+- [x] T021 [US1] Create `evaluation.py` with save_embeddings(), save_cluster_assignments(), save_k_selection() in `divide_conquer_method/evaluation.py`
 
 ### Main Pipeline
 
-- [ ] T022 [US1] Create `run_pipeline.py` with main() function for single-group execution in `divide_conquer_method/run_pipeline.py`
-- [ ] T023 [US1] Add CLI argument parsing (--group, --input, --output, --subset) in `divide_conquer_method/run_pipeline.py`
+- [x] T022 [US1] Create `run_pipeline.py` with main() function for single-group execution in `divide_conquer_method/run_pipeline.py`
+- [x] T023 [US1] Add CLI argument parsing (--group, --input, --output, --subset) in `divide_conquer_method/run_pipeline.py`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -111,18 +111,18 @@
 
 ### Comparison Metrics
 
-- [ ] T024 [US2] Add comparison table generation to `evaluation.py` - save_comparison_table() in `divide_conquer_method/evaluation.py`
+- [x] T024 [US2] Add comparison table generation to `evaluation.py` - save_comparison_table() in `divide_conquer_method/evaluation.py`
 
 ### Visualization
 
-- [ ] T025 [P] [US2] Create `visualization.py` with plot_bic_curve() in `divide_conquer_method/visualization.py`
-- [ ] T026 [P] [US2] Add plot_umap_comparison() showing GMM vs DEC clusters in `divide_conquer_method/visualization.py`
-- [ ] T027 [US2] Add plot_iprgc_enrichment() bar chart in `divide_conquer_method/visualization.py`
-- [ ] T028 [US2] Add plot_cluster_prototypes() for mean±SEM traces in `divide_conquer_method/visualization.py`
+- [x] T025 [P] [US2] Create `visualization.py` with plot_bic_curve() in `divide_conquer_method/visualization.py`
+- [x] T026 [P] [US2] Add plot_umap_comparison() showing GMM vs DEC clusters in `divide_conquer_method/visualization.py`
+- [x] T027 [US2] Add plot_iprgc_enrichment() bar chart in `divide_conquer_method/visualization.py`
+- [x] T028 [US2] Add plot_cluster_prototypes() for mean±SEM traces in `divide_conquer_method/visualization.py`
 
 ### Integration
 
-- [ ] T029 [US2] Integrate visualization calls into run_pipeline.py in `divide_conquer_method/run_pipeline.py`
+- [x] T029 [US2] Integrate visualization calls into run_pipeline.py in `divide_conquer_method/run_pipeline.py`
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -136,14 +136,14 @@
 
 ### Batch Processing
 
-- [ ] T030 [US3] Add --all-groups CLI flag handling in `divide_conquer_method/run_pipeline.py`
-- [ ] T031 [US3] Implement loop over ['DSGC', 'OSGC', 'Other'] groups in `divide_conquer_method/run_pipeline.py`
-- [ ] T032 [US3] Add per-group output subdirectories (results/{group}/, plots/{group}/) in `divide_conquer_method/run_pipeline.py`
+- [x] T030 [US3] Add --all-groups CLI flag handling in `divide_conquer_method/run_pipeline.py`
+- [x] T031 [US3] Implement loop over ['DSGC', 'OSGC', 'Other'] groups in `divide_conquer_method/run_pipeline.py`
+- [x] T032 [US3] Add per-group output subdirectories (results/{group}/, plots/{group}/) in `divide_conquer_method/run_pipeline.py`
 
 ### Consolidated Report
 
-- [ ] T033 [US3] Create generate_consolidated_report() in `divide_conquer_method/evaluation.py`
-- [ ] T034 [US3] Add summary table with cluster counts and ipRGC metrics across groups in `divide_conquer_method/evaluation.py`
+- [x] T033 [US3] Create generate_consolidated_report() in `divide_conquer_method/evaluation.py`
+- [x] T034 [US3] Add summary table with cluster counts and ipRGC metrics across groups in `divide_conquer_method/evaluation.py`
 
 **Checkpoint**: All three groups can be processed in one command
 
@@ -157,14 +157,14 @@
 
 ### Checkpoint Loading
 
-- [ ] T035 [US4] Add load_model() function to load saved autoencoder in `divide_conquer_method/train.py`
-- [ ] T036 [US4] Add load_gmm_results() to load cached k* and GMM model in `divide_conquer_method/clustering/gmm_bic.py`
-- [ ] T037 [US4] Add load_dec_results() to load cached DEC assignments in `divide_conquer_method/clustering/dec_refine.py`
+- [x] T035 [US4] Add load_model() function to load saved autoencoder in `divide_conquer_method/train.py`
+- [x] T036 [US4] Add load_gmm_results() to load cached k* and GMM model in `divide_conquer_method/clustering/gmm_bic.py`
+- [x] T037 [US4] Add load_dec_results() to load cached DEC assignments in `divide_conquer_method/clustering/dec_refine.py`
 
 ### CLI Flags
 
-- [ ] T038 [US4] Add --skip-training, --skip-gmm, --skip-dec flags in `divide_conquer_method/run_pipeline.py`
-- [ ] T039 [US4] Implement checkpoint detection and loading logic in main() in `divide_conquer_method/run_pipeline.py`
+- [x] T038 [US4] Add --skip-training, --skip-gmm, --skip-dec flags in `divide_conquer_method/run_pipeline.py`
+- [x] T039 [US4] Implement checkpoint detection and loading logic in main() in `divide_conquer_method/run_pipeline.py`
 
 **Checkpoint**: Pipeline can resume from any saved stage
 
@@ -178,10 +178,10 @@
 
 ### Visualization-Only Mode
 
-- [ ] T040 [US5] Add --visualize-only flag in `divide_conquer_method/run_pipeline.py`
-- [ ] T041 [US5] Create load_artifacts_for_visualization() to load embeddings, assignments from parquet/json in `divide_conquer_method/evaluation.py`
-- [ ] T042 [US5] Implement generate_all_plots() standalone function in `divide_conquer_method/visualization.py`
-- [ ] T043 [US5] Wire --visualize-only to skip training/clustering and call generate_all_plots() in `divide_conquer_method/run_pipeline.py`
+- [x] T040 [US5] Add --visualize-only flag in `divide_conquer_method/run_pipeline.py`
+- [x] T041 [US5] Create load_artifacts_for_visualization() to load embeddings, assignments from parquet/json in `divide_conquer_method/evaluation.py`
+- [x] T042 [US5] Implement generate_all_plots() standalone function in `divide_conquer_method/visualization.py`
+- [x] T043 [US5] Wire --visualize-only to skip training/clustering and call generate_all_plots() in `divide_conquer_method/run_pipeline.py`
 
 **Checkpoint**: All plots can be regenerated from saved files in < 30 seconds
 
@@ -191,10 +191,10 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T044 [P] Add logging throughout pipeline (use logging.getLogger(__name__)) in all modules
-- [ ] T045 [P] Add docstrings to all public functions (Google-style)
-- [ ] T046 Add edge case handling: small groups (< 50 cells), NaN traces, DEC non-convergence in `divide_conquer_method/run_pipeline.py`
-- [ ] T047 Add reject-reason counter for data filtering audit in `divide_conquer_method/data_loader.py`
+- [x] T044 [P] Add logging throughout pipeline (use logging.getLogger(__name__)) in all modules
+- [x] T045 [P] Add docstrings to all public functions (Google-style)
+- [x] T046 Add edge case handling: small groups (< 50 cells), NaN traces, DEC non-convergence in `divide_conquer_method/run_pipeline.py`
+- [x] T047 Add reject-reason counter for data filtering audit in `divide_conquer_method/data_loader.py`
 - [ ] T048 Validate pipeline end-to-end with quickstart.md examples
 - [ ] T049 Run full pipeline on actual data and verify outputs match expectations
 
