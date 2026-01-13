@@ -197,6 +197,31 @@ def dec_loss(q: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
     return loss
 
 
+def cluster_balance_loss(q: torch.Tensor) -> torch.Tensor:
+    """
+    Compute cluster balance regularization to prevent collapse.
+    
+    Maximizes entropy of cluster proportions (encourages uniform cluster sizes).
+    
+    Args:
+        q: (batch, k) soft assignments.
+    
+    Returns:
+        Negative entropy of cluster proportions (to minimize).
+    """
+    # Cluster proportions: average soft assignment per cluster
+    cluster_props = q.mean(dim=0)  # (k,)
+    
+    # Entropy of cluster proportions: H = -sum(p * log(p))
+    # Higher entropy = more uniform distribution = balanced clusters
+    entropy = -torch.sum(cluster_props * torch.log(cluster_props + 1e-10))
+    
+    # Return negative entropy so minimizing loss = maximizing entropy
+    # Normalize by log(k) so it's in [0, 1]
+    max_entropy = torch.log(torch.tensor(q.size(1), dtype=torch.float32, device=q.device))
+    return -entropy / max_entropy  # Returns value in [-1, 0]
+
+
 def reconstruction_loss(
     inputs: dict[str, torch.Tensor],
     reconstructions: dict[str, torch.Tensor],

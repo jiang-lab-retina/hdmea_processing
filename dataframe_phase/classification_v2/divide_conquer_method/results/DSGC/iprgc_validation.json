@@ -1,55 +1,55 @@
 {
   "group": "DSGC",
-  "baseline_prevalence": 0.13714047519799916,
+  "baseline_prevalence": 0.13716906399833229,
   "initial_gmm": {
-    "purity": 0.8628595248020008,
+    "purity": 0.8628309360016677,
     "top_enriched": [
       {
+        "cluster": 5,
+        "n_cells": 90,
+        "n_iprgc": 35,
+        "fraction": 0.3888888888888889,
+        "enrichment": 2.8351063829787235
+      },
+      {
+        "cluster": 4,
+        "n_cells": 286,
+        "n_iprgc": 101,
+        "fraction": 0.3531468531468531,
+        "enrichment": 2.5745371649626967
+      },
+      {
         "cluster": 2,
-        "n_cells": 78,
-        "n_iprgc": 39,
-        "fraction": 0.5,
-        "enrichment": 3.645896656534955
-      },
-      {
-        "cluster": 6,
-        "n_cells": 210,
-        "n_iprgc": 87,
-        "fraction": 0.4142857142857143,
-        "enrichment": 3.0208858011289625
-      },
-      {
-        "cluster": 3,
-        "n_cells": 192,
-        "n_iprgc": 78,
-        "fraction": 0.40625,
-        "enrichment": 2.9622910334346506
+        "n_cells": 194,
+        "n_iprgc": 68,
+        "fraction": 0.35051546391752575,
+        "enrichment": 2.5553536176479805
       }
     ]
   },
   "dec_refined": {
-    "purity": 0.8641100458524386,
+    "purity": 0.8628309360016677,
     "top_enriched": [
       {
-        "cluster": 3,
-        "n_cells": 1,
+        "cluster": 26,
+        "n_cells": 3,
         "n_iprgc": 1,
-        "fraction": 1.0,
-        "enrichment": 7.29179331306991
+        "fraction": 0.3333333333333333,
+        "enrichment": 2.430091185410334
       },
       {
-        "cluster": 10,
-        "n_cells": 4,
-        "n_iprgc": 3,
-        "fraction": 0.75,
-        "enrichment": 5.468844984802432
+        "cluster": 28,
+        "n_cells": 4756,
+        "n_iprgc": 657,
+        "fraction": 0.1381412952060555,
+        "enrichment": 1.007087831464207
       },
       {
-        "cluster": 6,
-        "n_cells": 15,
-        "n_iprgc": 9,
-        "fraction": 0.6,
-        "enrichment": 4.375075987841946
+        "cluster": 7,
+        "n_cells": 1,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
       }
     ]
   }

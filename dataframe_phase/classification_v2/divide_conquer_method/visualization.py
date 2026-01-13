@@ -428,31 +428,22 @@ def generate_all_plots(
         )
         plt.close()
     
-    if 'dec_labels' in artifacts:
-        # Use INITIAL embeddings with DEC labels for fair visual comparison
-        # (DEC-refined embeddings are distorted for clustering optimization)
-        if 'embeddings_initial' in artifacts:
-            emb_for_dec = artifacts['embeddings_initial']
-        elif 'embeddings_dec' in artifacts:
-            emb_for_dec = artifacts['embeddings_dec']
+    if 'embeddings_dec' in artifacts:
+        emb_dec = artifacts['embeddings_dec']
+        if isinstance(emb_dec, np.ndarray):
+            emb = emb_dec
         else:
-            emb_for_dec = None
+            z_cols = [c for c in emb_dec.columns if c.startswith('z_')]
+            emb = emb_dec[z_cols].values
         
-        if emb_for_dec is not None:
-            if isinstance(emb_for_dec, np.ndarray):
-                emb = emb_for_dec
-            else:
-                z_cols = [c for c in emb_for_dec.columns if c.startswith('z_')]
-                emb = emb_for_dec[z_cols].values
-            
-            plot_umap_embeddings(
-                embeddings=emb,
-                labels=artifacts.get('dec_labels', np.zeros(len(emb))),
-                title=f'{group}: DEC-Refined Labels (on initial embeddings)',
-                iprgc_labels=artifacts.get('iprgc_labels'),
-                output_path=output_dir / "umap_dec.png",
-            )
-            plt.close()
+        plot_umap_embeddings(
+            embeddings=emb,
+            labels=artifacts.get('dec_labels', np.zeros(len(emb))),
+            title=f'{group}: DEC-Refined Clustering',
+            iprgc_labels=artifacts.get('iprgc_labels'),
+            output_path=output_dir / "umap_dec.png",
+        )
+        plt.close()
     
     # UMAP comparison
     if 'embeddings_initial' in artifacts and 'embeddings_dec' in artifacts:

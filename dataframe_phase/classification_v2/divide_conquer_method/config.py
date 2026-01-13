@@ -105,8 +105,8 @@ SEGMENT_LATENT_DIMS: Dict[str, int] = {
 TOTAL_LATENT_DIM = sum(SEGMENT_LATENT_DIMS.values())  # 49
 
 # CNN architecture
-AE_HIDDEN_DIMS = [32, 64, 128]  # Conv channels
-AE_KERNEL_SIZES = [7, 5, 3]  # Kernel sizes per layer
+AE_HIDDEN_DIMS = [8, 16, 32]  # Conv channels
+AE_KERNEL_SIZES = [3, 3, 3]  # Kernel sizes per layer
 AE_DROPOUT = 0.1
 
 # Training
@@ -134,8 +134,8 @@ K_MAX: Dict[str, int] = {
 K_MIN = 1
 
 # GMM fitting parameters
-GMM_N_INIT = 20  # Number of random restarts
-GMM_REG_COVAR = 1e-3  # Covariance regularization
+GMM_N_INIT = 20  # 20 default of random restarts
+GMM_REG_COVAR = 1e-2  # 1e-3 for Baden, 1e-2 for current Covariance regularization
 GMM_MAX_ITER = 300  # Max EM iterations
 GMM_TOL = 1e-4  # Convergence tolerance
 GMM_USE_GPU = True  # Use GPU-accelerated GMM if available
@@ -145,11 +145,12 @@ GMM_USE_GPU = True  # Use GPU-accelerated GMM if available
 # ==============================================================================
 
 DEC_UPDATE_INTERVAL = 10  # Update target distribution every N iterations
-DEC_MAX_ITERATIONS = 200  # Maximum DEC iterations
+DEC_MAX_ITERATIONS = 400  # 200 Maximum DEC iterations
 DEC_CONVERGENCE_THRESHOLD = 0.001  # Stop when assignment change < threshold
-DEC_RECONSTRUCTION_WEIGHT = 1 #0.1  # IDEC-style reconstruction term (gamma)
+DEC_RECONSTRUCTION_WEIGHT = 1  # IDEC-style reconstruction term (gamma)
+DEC_BALANCE_WEIGHT = 0.1  # Cluster balance regularization (prevents collapse into 1 cluster)
 DEC_ALPHA = 1.0  # Student-t degrees of freedom
-DEC_LEARNING_RATE = 1e-4  # Learning rate for DEC optimization
+DEC_LEARNING_RATE = 1e-4  # 1e-4 for Baden, 1e-3 for current Learning rate for DEC optimization
 
 # ==============================================================================
 # Visualization

@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 from .. import config
 from ..models.autoencoder import MultiSegmentAutoencoder
-from ..models.dec import IDEC, DECLayer, dec_loss, reconstruction_loss
+from ..models.dec import IDEC, DECLayer, dec_loss, reconstruction_loss, cluster_balance_loss
 from ..train import MultiSegmentDataset
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ def refine_with_dec(
     update_interval: int | None = None,
     convergence_threshold: float | None = None,
     reconstruction_weight: float | None = None,
+    balance_weight: float | None = None,
     lr: float | None = None,
     batch_size: int | None = None,
     device: str | None = None,
@@ -51,6 +52,7 @@ def refine_with_dec(
         update_interval: Update target P every N iterations.
         convergence_threshold: Stop when assignment change < threshold.
         reconstruction_weight: Weight for reconstruction loss (gamma).
+        balance_weight: Weight for cluster balance regularization (prevents collapse).
         lr: Learning rate.
         batch_size: Training batch size.
         device: "cuda" or "cpu".
@@ -64,6 +66,7 @@ def refine_with_dec(
     update_interval = update_interval if update_interval is not None else config.DEC_UPDATE_INTERVAL
     convergence_threshold = convergence_threshold if convergence_threshold is not None else config.DEC_CONVERGENCE_THRESHOLD
     reconstruction_weight = reconstruction_weight if reconstruction_weight is not None else config.DEC_RECONSTRUCTION_WEIGHT
+    balance_weight = balance_weight if balance_weight is not None else getattr(config, 'DEC_BALANCE_WEIGHT', 0.0)
     lr = lr if lr is not None else config.DEC_LEARNING_RATE
     batch_size = batch_size if batch_size is not None else config.AE_BATCH_SIZE
     device = device if device is not None else config.DEVICE
@@ -107,7 +110,8 @@ def refine_with_dec(
     # Initial cluster assignments
     prev_labels = _get_all_labels(idec, segment_tensors, device, batch_size)
     
-    logger.info(f"Starting DEC refinement: k={k}, max_iter={max_iterations}")
+    logger.info(f"Starting DEC refinement: k={k}, max_iter={max_iterations}, "
+                f"rec_weight={reconstruction_weight}, balance_weight={balance_weight}")
     
     # Target distribution (computed on full dataset)
     p_target = None
@@ -145,8 +149,11 @@ def refine_with_dec(
             # Reconstruction loss
             loss_rec = reconstruction_loss(batch, output['reconstructions'])
             
+            # Cluster balance loss (prevents collapse into single cluster)
+            loss_bal = cluster_balance_loss(q) if balance_weight > 0 else torch.tensor(0.0)
+            
             # Total loss
-            loss = loss_dec + reconstruction_weight * loss_rec
+            loss = loss_dec + reconstruction_weight * loss_rec + balance_weight * loss_bal
             
             # Backward pass
             loss.backward()
