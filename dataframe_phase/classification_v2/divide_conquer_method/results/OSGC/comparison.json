@@ -1,9 +1,9 @@
 {
   "group": "OSGC",
   "k": 20,
-  "gmm_purity": 0.8992142125042706,
-  "dec_purity": 0.9002391527160916,
-  "purity_improvement": 0.0010249402118209794,
-  "gmm_top_enrichment": 2.8877561345813305,
-  "dec_top_enrichment": 9.922033898305084
+  "gmm_purity": 0.8991452991452992,
+  "dec_purity": 0.8991452991452992,
+  "purity_improvement": 0.0,
+  "gmm_top_enrichment": 2.8329297820823243,
+  "dec_top_enrichment": 2.288135593220339
 }

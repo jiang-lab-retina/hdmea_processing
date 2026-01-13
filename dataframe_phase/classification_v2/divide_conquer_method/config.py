@@ -51,6 +51,22 @@ GROUP_PRIORITY = ["DS", "OS", "OTHER"]  # Priority order for assignment
 MIN_GROUP_SIZE = 50
 
 # ==============================================================================
+# Cell Quality Filtering (matching Autoencoder_method)
+# ==============================================================================
+
+# Quality index threshold (step_up_QI) - cells below this are excluded
+QI_THRESHOLD = 0.3  # Same as Autoencoder_method
+
+# Maximum baseline firing rate (Hz) - high baseline indicates noise/artifacts
+BASELINE_MAX_THRESHOLD = 30.0  # Same as Autoencoder_method
+
+# Minimum cells per batch after filtering
+MIN_BATCH_GOOD_CELLS = 5  # Same as Autoencoder_method
+
+# Baseline trace column (used to compute baseline)
+BASELINE_TRACE_COL = "step_up_5s_5i_b0_3x"
+
+# ==============================================================================
 # Preprocessing
 # ==============================================================================
 

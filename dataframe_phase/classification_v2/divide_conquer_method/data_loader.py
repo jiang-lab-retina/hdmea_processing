@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 def load_and_filter_data(
     input_path: Path | str | None = None,
     require_complete_traces: bool = True,
+    qi_threshold: float | None = None,
+    baseline_max: float | None = None,
+    min_batch_cells: int | None = None,
 ) -> Tuple[pd.DataFrame, Dict[str, int]]:
     """
     Load parquet file and filter to RGC cells only.
@@ -31,6 +34,9 @@ def load_and_filter_data(
     Args:
         input_path: Path to input parquet file. Defaults to config.INPUT_PATH.
         require_complete_traces: If True, drop cells with NaN in required columns.
+        qi_threshold: Minimum quality index for inclusion. Defaults to config.QI_THRESHOLD.
+        baseline_max: Maximum baseline firing rate (Hz). Defaults to config.BASELINE_MAX_THRESHOLD.
+        min_batch_cells: Minimum cells per batch. Defaults to config.MIN_BATCH_GOOD_CELLS.
     
     Returns:
         Tuple of (filtered_dataframe, reject_reasons_dict)
@@ -40,6 +46,10 @@ def load_and_filter_data(
         FileNotFoundError: If input_path doesn't exist.
         ValueError: If required columns are missing.
     """
+    # Apply defaults from config
+    qi_threshold = qi_threshold if qi_threshold is not None else getattr(config, 'QI_THRESHOLD', None)
+    baseline_max = baseline_max if baseline_max is not None else getattr(config, 'BASELINE_MAX_THRESHOLD', None)
+    min_batch_cells = min_batch_cells if min_batch_cells is not None else getattr(config, 'MIN_BATCH_GOOD_CELLS', None)
     input_path = Path(input_path) if input_path else config.INPUT_PATH
     
     logger.info(f"Loading data from {input_path}")
@@ -102,6 +112,38 @@ def load_and_filter_data(
     if total_none_removed > 0:
         logger.warning(f"Total {total_none_removed} cells removed due to None trace values. "
                       f"Check data source for missing recordings.")
+    
+    # Step 4: Filter by quality index (QI)
+    if qi_threshold is not None and config.STEP_UP_QI_COL in df.columns:
+        qi_mask = df[config.STEP_UP_QI_COL] >= qi_threshold
+        low_qi_count = (~qi_mask).sum()
+        if low_qi_count > 0:
+            reject_reasons["low_qi"] = low_qi_count
+            df = df[qi_mask].copy()
+            logger.info(f"  Removed {low_qi_count} cells with QI < {qi_threshold}")
+    
+    # Step 5: Filter by baseline firing rate
+    if baseline_max is not None and config.BASELINE_TRACE_COL in df.columns:
+        # Compute baseline from first 1 second of baseline trace
+        baselines = _compute_baselines(df, config.BASELINE_TRACE_COL)
+        if baselines is not None:
+            high_baseline_mask = baselines > baseline_max
+            high_baseline_count = high_baseline_mask.sum()
+            if high_baseline_count > 0:
+                reject_reasons["high_baseline"] = high_baseline_count
+                df = df[~high_baseline_mask].copy()
+                logger.info(f"  Removed {high_baseline_count} cells with baseline > {baseline_max} Hz")
+    
+    # Step 6: Filter batches with too few cells
+    if min_batch_cells is not None and 'batch_id' in df.columns:
+        batch_counts = df['batch_id'].value_counts()
+        small_batches = batch_counts[batch_counts < min_batch_cells].index
+        if len(small_batches) > 0:
+            small_batch_mask = df['batch_id'].isin(small_batches)
+            small_batch_count = small_batch_mask.sum()
+            reject_reasons["small_batch"] = small_batch_count
+            df = df[~small_batch_mask].copy()
+            logger.info(f"  Removed {small_batch_count} cells from {len(small_batches)} batches with < {min_batch_cells} cells")
     
     final_count = len(df)
     total_removed = initial_count - final_count
@@ -263,3 +305,42 @@ def _get_required_trace_columns() -> list[str]:
     ])
     
     return columns
+
+
+def _compute_baselines(
+    df: pd.DataFrame,
+    trace_col: str,
+    sampling_rate: float = 60.0,
+    baseline_seconds: float = 1.0,
+) -> np.ndarray | None:
+    """
+    Compute baseline firing rate from the first N seconds of a trace.
+    
+    Args:
+        df: DataFrame with trace column.
+        trace_col: Column name for baseline trace.
+        sampling_rate: Sampling rate in Hz.
+        baseline_seconds: Number of seconds at start to use for baseline.
+    
+    Returns:
+        Array of baseline values (Hz), or None if column not found.
+    """
+    if trace_col not in df.columns:
+        logger.warning(f"Baseline column {trace_col} not found, skipping baseline filter")
+        return None
+    
+    n_baseline_samples = int(sampling_rate * baseline_seconds)
+    baselines = []
+    
+    for val in df[trace_col].values:
+        try:
+            trace = _average_trials(val)
+            if len(trace) >= n_baseline_samples:
+                baseline = np.mean(trace[:n_baseline_samples])
+            else:
+                baseline = np.mean(trace)
+            baselines.append(baseline)
+        except Exception:
+            baselines.append(0.0)
+    
+    return np.array(baselines)
