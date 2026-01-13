@@ -111,14 +111,21 @@ def select_k_min_bic(
     models: List[GMMType],
     bic_values: np.ndarray,
     k_range: list[int],
+    method: str = "elbow",
+    elbow_threshold: float = 0.01,
 ) -> Tuple[int, GMMType]:
     """
-    Select k* as the k with minimum BIC.
+    Select k* using BIC-based criteria.
     
     Args:
         models: List of fitted GMMs for each k.
         bic_values: Array of BIC values.
         k_range: List of k values corresponding to models.
+        method: Selection method:
+            - "min": Pure minimum BIC (original behavior)
+            - "elbow": Find elbow where improvement slows (default)
+        elbow_threshold: For elbow method, minimum relative improvement
+            to continue increasing k. Default 0.01 (1% improvement).
     
     Returns:
         Tuple of (selected k, corresponding GMM model).
@@ -131,11 +138,24 @@ def select_k_min_bic(
     if not valid_mask.any():
         raise ValueError("No valid BIC values computed")
     
-    best_idx = np.argmin(bic_values)
+    if method == "min":
+        # Original behavior: pick minimum BIC
+        best_idx = np.argmin(bic_values)
+    elif method == "elbow":
+        # Elbow method: find where improvement becomes marginal
+        best_idx = _find_elbow(bic_values, elbow_threshold)
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'min' or 'elbow'")
+    
     k_selected = k_range[best_idx]
     best_model = models[best_idx]
     
-    logger.info(f"Selected k*={k_selected} (BIC={bic_values[best_idx]:.1f})")
+    min_bic_idx = np.argmin(bic_values)
+    min_bic_k = k_range[min_bic_idx]
+    
+    logger.info(f"Selected k*={k_selected} (BIC={bic_values[best_idx]:.1f}) using method='{method}'")
+    if method == "elbow" and k_selected != min_bic_k:
+        logger.info(f"  (min BIC would select k={min_bic_k}, BIC={bic_values[min_bic_idx]:.1f})")
     
     # Warn if at boundary
     if best_idx == 0:
@@ -144,6 +164,42 @@ def select_k_min_bic(
         logger.warning(f"k*={k_selected} is at upper boundary, consider increasing K_MAX")
     
     return k_selected, best_model
+
+
+def _find_elbow(bic_values: np.ndarray, threshold: float = 0.01) -> int:
+    """
+    Find elbow in BIC curve where improvement becomes marginal.
+    
+    Looks for the first k where:
+    (BIC[k-1] - BIC[k]) / |BIC[k-1]| < threshold
+    
+    i.e., improvement is less than threshold * 100% of previous BIC.
+    
+    Args:
+        bic_values: Array of BIC values.
+        threshold: Minimum relative improvement to continue (default 0.01 = 1%).
+    
+    Returns:
+        Index of selected k.
+    """
+    n = len(bic_values)
+    
+    # Start from k=1, look for where improvement becomes marginal
+    for i in range(1, n):
+        prev_bic = bic_values[i - 1]
+        curr_bic = bic_values[i]
+        
+        # Relative improvement (negative means BIC decreased = good)
+        improvement = (prev_bic - curr_bic) / abs(prev_bic) if prev_bic != 0 else 0
+        
+        # If improvement is less than threshold, we've found the elbow
+        # Use previous k (i-1) as it had meaningful improvement
+        if improvement < threshold:
+            logger.debug(f"Elbow at k index {i-1}: improvement {improvement:.4f} < {threshold}")
+            return i - 1
+    
+    # No elbow found, return minimum BIC
+    return np.argmin(bic_values)
 
 
 def save_k_selection(

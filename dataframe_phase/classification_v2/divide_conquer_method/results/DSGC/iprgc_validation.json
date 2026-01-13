@@ -1,55 +1,55 @@
 {
   "group": "DSGC",
-  "baseline_prevalence": 0.13716906399833229,
+  "baseline_prevalence": 0.16640042598509053,
   "initial_gmm": {
-    "purity": 0.8628309360016677,
+    "purity": 0.8359957401490948,
     "top_enriched": [
       {
-        "cluster": 18,
-        "n_cells": 52,
-        "n_iprgc": 25,
-        "fraction": 0.4807692307692308,
-        "enrichment": 3.504939209726444
+        "cluster": 0,
+        "n_cells": 15,
+        "n_iprgc": 9,
+        "fraction": 0.6,
+        "enrichment": 3.6057599999999996
       },
       {
-        "cluster": 20,
-        "n_cells": 219,
-        "n_iprgc": 84,
-        "fraction": 0.3835616438356164,
-        "enrichment": 2.796269309239289
+        "cluster": 10,
+        "n_cells": 32,
+        "n_iprgc": 19,
+        "fraction": 0.59375,
+        "enrichment": 3.5682
       },
       {
-        "cluster": 2,
-        "n_cells": 195,
-        "n_iprgc": 70,
-        "fraction": 0.358974358974359,
-        "enrichment": 2.617021276595745
+        "cluster": 3,
+        "n_cells": 47,
+        "n_iprgc": 22,
+        "fraction": 0.46808510638297873,
+        "enrichment": 2.8130042553191488
       }
     ]
   },
   "dec_refined": {
-    "purity": 0.8628309360016677,
+    "purity": 0.8359957401490948,
     "top_enriched": [
       {
+        "cluster": 0,
+        "n_cells": 15,
+        "n_iprgc": 9,
+        "fraction": 0.6,
+        "enrichment": 3.6057599999999996
+      },
+      {
+        "cluster": 10,
+        "n_cells": 32,
+        "n_iprgc": 19,
+        "fraction": 0.59375,
+        "enrichment": 3.5682
+      },
+      {
         "cluster": 3,
-        "n_cells": 2,
-        "n_iprgc": 1,
-        "fraction": 0.5,
-        "enrichment": 3.6451367781155017
-      },
-      {
-        "cluster": 18,
-        "n_cells": 55,
-        "n_iprgc": 18,
-        "fraction": 0.32727272727272727,
-        "enrichment": 2.3859077093119647
-      },
-      {
-        "cluster": 24,
-        "n_cells": 2083,
-        "n_iprgc": 503,
-        "fraction": 0.2414786365818531,
-        "enrichment": 1.7604453186674003
+        "n_cells": 47,
+        "n_iprgc": 22,
+        "fraction": 0.46808510638297873,
+        "enrichment": 2.8130042553191488
       }
     ]
   }

@@ -255,7 +255,11 @@ def _process_single_group(
         )
     else:
         gmm_models, bic_values = fit_gmm_bic(embeddings_std, k_range)
-        k_selected, gmm_model = select_k_min_bic(gmm_models, bic_values, k_range)
+        k_selected, gmm_model = select_k_min_bic(
+            gmm_models, bic_values, k_range,
+            method=getattr(config, 'K_SELECTION_METHOD', 'elbow'),
+            elbow_threshold=getattr(config, 'ELBOW_THRESHOLD', 0.01),
+        )
         
         evaluation.save_k_selection(k_range, bic_values, k_selected, group, results_dir)
     

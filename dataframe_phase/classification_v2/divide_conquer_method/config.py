@@ -151,10 +151,15 @@ K_MIN = 1
 
 # GMM fitting parameters
 GMM_N_INIT = 20  # 20 default of random restarts
-GMM_REG_COVAR = 1e-2  # 1e-3 for Baden, 1e-2 for current Covariance regularization
+GMM_REG_COVAR = 1e-1  # 1e-3 for Baden, 1e-2 for current Covariance regularization
 GMM_MAX_ITER = 300  # Max EM iterations
 GMM_TOL = 1e-4  # Convergence tolerance
 GMM_USE_GPU = True  # Use GPU-accelerated GMM if available
+
+# K-selection method
+K_SELECTION_METHOD = "elbow"  # "min" for pure minimum BIC, "elbow" for elbow detection
+ELBOW_THRESHOLD = 0.01  # Minimum relative BIC improvement to continue (1% default)
+                        # Higher = fewer clusters, lower = more clusters
 
 # ==============================================================================
 # DEC Refinement
