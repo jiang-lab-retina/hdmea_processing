@@ -169,8 +169,13 @@ def _average_trials(trace_data) -> np.ndarray:
     """
     Average across trials if trace has multiple trials.
     
+    Handles multiple data formats:
+    - 1D array: single trial, return as-is
+    - 2D array: multiple trials, average across axis=0
+    - Object array: ragged trials (different lengths), stack and average
+    
     Args:
-        trace_data: Raw trace data (1D array or 2D [trials, time]).
+        trace_data: Raw trace data (1D array, 2D [trials, time], or object array).
     
     Returns:
         1D trial-mean trace.
@@ -184,6 +189,18 @@ def _average_trials(trace_data) -> np.ndarray:
     # Handle scalar (0D) or empty arrays
     if arr.ndim == 0 or arr.size == 0:
         raise ValueError(f"Unexpected trace shape: {arr.shape}")
+    
+    # KEY: Handle object dtype arrays (ragged trials with different lengths)
+    # This is the format used in the parquet file for multi-trial data
+    if arr.dtype == object and arr.ndim == 1:
+        try:
+            # Stack trials into 2D array and average
+            trials = np.vstack([np.asarray(t, dtype=np.float64) for t in arr])
+            return np.mean(trials, axis=0)
+        except Exception as e:
+            # Fallback: use first trial if stacking fails (truly ragged data)
+            logger.debug(f"Falling back to first trial due to: {e}")
+            return np.asarray(arr[0], dtype=np.float64)
     
     if arr.ndim == 1:
         return arr.astype(np.float64)
