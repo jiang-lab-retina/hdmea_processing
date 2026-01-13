@@ -81,9 +81,10 @@ def main(
     input_path = Path(input_path) if input_path else config.INPUT_PATH
     output_dir = Path(output_dir) if output_dir else config.OUTPUT_DIR
     
-    # Validate arguments
+    # Default to all_groups if no group specified
     if not group and not all_groups:
-        raise ValueError("Must specify --group or --all-groups")
+        all_groups = True
+        logger.info("No group specified, defaulting to --all-groups")
     
     if group and group not in config.GROUP_NAMES:
         raise ValueError(f"Invalid group '{group}'. Must be one of {config.GROUP_NAMES}")
@@ -382,7 +383,8 @@ def parse_args():
     parser.add_argument(
         "--all-groups",
         action="store_true",
-        help="Process all three groups"
+        default=True,
+        help="Process all three groups (default)"
     )
     
     parser.add_argument(

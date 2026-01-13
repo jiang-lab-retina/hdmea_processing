@@ -175,13 +175,21 @@ def _average_trials(trace_data) -> np.ndarray:
     Returns:
         1D trial-mean trace.
     """
+    # Handle None or empty data
+    if trace_data is None:
+        raise ValueError("Trace data is None")
+    
     arr = np.asarray(trace_data)
     
+    # Handle scalar (0D) or empty arrays
+    if arr.ndim == 0 or arr.size == 0:
+        raise ValueError(f"Unexpected trace shape: {arr.shape}")
+    
     if arr.ndim == 1:
-        return arr
+        return arr.astype(np.float64)
     elif arr.ndim == 2:
         # Average across first axis (trials)
-        return np.mean(arr, axis=0)
+        return np.mean(arr, axis=0).astype(np.float64)
     else:
         raise ValueError(f"Unexpected trace shape: {arr.shape}")
 

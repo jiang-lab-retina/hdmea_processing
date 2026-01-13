@@ -180,12 +180,25 @@ def preprocess_all_segments(
     if step_col in raw_traces:
         result[step_col] = preprocess_segment(raw_traces[step_col], step_col)
     
-    # Replace NaN with 0
+    # Ensure numeric dtype and replace NaN with 0
     for name in result:
-        if np.any(np.isnan(result[name])):
-            nan_count = np.isnan(result[name]).sum()
-            logger.warning(f"  {name}: replacing {nan_count} NaN values with 0")
-            result[name] = np.nan_to_num(result[name], nan=0.0)
+        # Convert to float64 to handle any object arrays
+        try:
+            arr = np.asarray(result[name], dtype=np.float64)
+            if np.any(np.isnan(arr)):
+                nan_count = np.isnan(arr).sum()
+                logger.warning(f"  {name}: replacing {nan_count} NaN values with 0")
+                arr = np.nan_to_num(arr, nan=0.0)
+            result[name] = arr
+        except (ValueError, TypeError) as e:
+            logger.warning(f"  {name}: could not convert to float64: {e}")
+            # Try to salvage by replacing problematic values
+            arr = result[name]
+            if arr.dtype == object:
+                # Handle object arrays by converting element-wise
+                arr = np.array([np.asarray(x, dtype=np.float64) if x is not None else np.zeros(1) 
+                               for x in arr.flat]).reshape(arr.shape)
+            result[name] = np.nan_to_num(arr.astype(np.float64), nan=0.0)
     
     # Log summary
     total_length = sum(s.shape[1] for s in result.values())
