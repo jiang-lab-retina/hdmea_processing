@@ -32,31 +32,56 @@ if (-not (Test-Path $checkpointDir)) {
     New-Item -ItemType Directory -Path $checkpointDir | Out-Null
 }
 
-$checkpointPath = Join-Path $checkpointDir "ai_checkpoint.json"
+$checkpointPath = Join-Path $checkpointDir "ai_checkpoints.json"
+
+# Load existing stack or start fresh
+$stack = @()
+if (Test-Path $checkpointPath) {
+    $raw = Get-Content -Raw -Path $checkpointPath
+    if ($raw -and $raw.Trim().Length -gt 0) {
+        $parsed = $raw | ConvertFrom-Json
+        if ($parsed -is [System.Array]) {
+            $stack = @($parsed)
+        } else {
+            # Migrate old single-checkpoint format
+            $stack = @($parsed)
+        }
+    }
+}
 
 $head = (git rev-parse HEAD).Trim()
 $stashRef = ""
-$stashDropRef = ""
 
 if ($hasChanges) {
-    # Include untracked files too.
     git stash push -u -m $stashMessage | Out-Host
     $stashRef = (git rev-parse --verify refs/stash).Trim()
-    $stashDropRef = "stash@{0}"
 } else {
     Write-Host "Working tree clean; no stash created. Recording HEAD only."
 }
 
-$data = @{
-    repoRoot  = $repoRoot
+$entry = [ordered]@{
+    id        = $timestamp
+    message   = $Message
     head      = $head
     stashRef  = $stashRef
-    stashDropRef = $stashDropRef
-    message   = $stashMessage
+    stashMsg  = $stashMessage
     timestamp = $timestamp
 }
 
-$json = ($data | ConvertTo-Json -Depth 4)
+# Push onto stack (newest last)
+$stack += $entry
+
+# Write stack back
+$json = ($stack | ConvertTo-Json -Depth 4)
+# ConvertTo-Json outputs a bare object (not array) when stack has 1 item; wrap it
+if ($stack.Count -eq 1) {
+    $json = "[$json]"
+}
 $json | Set-Content -Encoding UTF8 -Path $checkpointPath
 
-Write-Host "Checkpoint saved to $checkpointPath"
+$count = $stack.Count
+Write-Host ""
+Write-Host "Checkpoint #${count} saved: '${Message}' (${timestamp})"
+Write-Host "Total checkpoints: ${count}"
+Write-Host ""
+Write-Host "To restore, run: Terminal > Run Task > 'Cursor AI: Restore'"

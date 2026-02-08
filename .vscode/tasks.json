@@ -4,13 +4,20 @@
     {
       "id": "checkpointMessage",
       "type": "promptString",
-      "description": "Checkpoint message (saved in .cursor/ai_checkpoint.json and git stash)",
+      "description": "Checkpoint message (e.g. 'before refactoring models')",
       "default": "pre-ai-edit"
+    },
+    {
+      "id": "checkpointId",
+      "type": "promptString",
+      "description": "Checkpoint timestamp/id to restore (leave empty for most recent). Run 'List Checkpoints' to see available.",
+      "default": ""
     }
   ],
   "tasks": [
     {
-      "label": "Cursor AI: Checkpoint (git stash)",
+      "label": "Cursor AI: Checkpoint",
+      "detail": "Save current state (Ctrl+Shift+B). Supports multiple stacked checkpoints.",
       "type": "shell",
       "command": "powershell",
       "args": [
@@ -29,7 +36,8 @@
       }
     },
     {
-      "label": "Cursor AI: Restore (undo agent edits)",
+      "label": "Cursor AI: Restore (most recent)",
+      "detail": "Undo all agent edits since the last checkpoint.",
       "type": "shell",
       "command": "powershell",
       "args": [
@@ -41,6 +49,42 @@
       ],
       "problemMatcher": [],
       "group": "test"
+    },
+    {
+      "label": "Cursor AI: Restore (pick checkpoint)",
+      "detail": "Restore to a specific checkpoint by timestamp/id.",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\\\scripts\\\\cursor_ai_restore.ps1",
+        "-Id",
+        "${input:checkpointId}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Cursor AI: List Checkpoints",
+      "detail": "Show all saved checkpoints with timestamps and messages.",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\\\scripts\\\\cursor_ai_restore.ps1",
+        "-List"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
     }
   ]
 }
