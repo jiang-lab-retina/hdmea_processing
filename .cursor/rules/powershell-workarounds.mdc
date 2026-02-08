@@ -40,20 +40,28 @@ does NOT track these edits. The user CANNOT use Cursor's "Revert" to undo AI cha
 
 Workaround: Use git as the safety net for reverting.
 
-### Before making edits (AI must do this automatically):
+### Recommended workflow (reliable rollback)
 
-1. Before editing ANY file, run: git stash push -m "pre-ai-edit" -- <filepath>
-   This saves the current state so the user can restore it.
-   If the file has no changes to stash, skip this step.
-2. Alternatively, for multi-file edits, run: git stash push -m "pre-ai-edit"
-   to stash all current working changes first.
+Run this once BEFORE asking the agent to make edits:
 
-### IMPORTANT rules for the stash workflow:
+- PowerShell: .\\scripts\\cursor_ai_checkpoint.ps1 -Message "short description"
 
-- Only stash ONCE at the start of a task, not before every individual edit.
-- If git stash reports "No local changes to save", proceed without stashing.
-- After all edits are done, tell the user: "To revert these changes, run:
-  git checkout -- <file1> <file2> ... or git stash pop to restore previous state."
+To revert ALL agent edits since the checkpoint:
+
+- PowerShell: .\\scripts\\cursor_ai_restore.ps1
+
+Notes:
+- The checkpoint includes untracked files (-u).
+- If the working tree was clean, the checkpoint records HEAD only (no stash). Restore will reset back to that HEAD.
+- If the working tree was dirty, the checkpoint creates a stash and restore re-applies it after resetting.
+
+### Manual fallback (if you do not want scripts)
+
+- git stash push -u -m "pre-ai-edit"
+- ... agent edits happen ...
+- git reset --hard HEAD
+- git clean -fd
+- git stash pop
 
 ## PowerShell 5.1 Shell Limitations
 
