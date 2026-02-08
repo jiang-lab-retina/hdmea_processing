@@ -2,13 +2,20 @@
 Segment decoders for the multi-segment autoencoder.
 
 Each decoder reconstructs a trace segment from its latent representation.
+Supports multiple decoder types: TCN (default), CNN, MultiScale.
 """
 
 import torch
 import torch.nn as nn
 
+# Import TCN decoders - handle both package and direct import
+try:
+    from .tcn_encoder import TCNDecoder, MultiScaleDecoder
+except ImportError:
+    from tcn_encoder import TCNDecoder, MultiScaleDecoder
 
-class SegmentDecoder(nn.Module):
+
+class SegmentDecoderCNN(nn.Module):
     """
     1D CNN decoder for a single trace segment.
     
@@ -159,24 +166,57 @@ class SegmentDecoderMLP(nn.Module):
 def create_decoder(
     latent_dim: int,
     output_length: int,
+    encoder_type: str = "tcn",
     hidden_dims: list[int] | None = None,
     dropout: float = 0.1,
-    use_mlp_threshold: int = 20,
+    use_mlp_threshold: int = 30,
+    tcn_channels: list[int] | None = None,
+    tcn_kernel_size: int = 3,
+    multiscale_kernel_sizes: list[int] | None = None,
+    multiscale_channels: int = 32,
 ) -> nn.Module:
     """
-    Factory function to create appropriate decoder based on output length.
+    Factory function to create appropriate decoder based on type and output length.
     
     Args:
         latent_dim: Input embedding dimension.
         output_length: Target output trace length.
-        hidden_dims: Hidden layer dimensions.
+        encoder_type: "tcn" (default), "cnn", or "multiscale" - matches encoder.
+        hidden_dims: Hidden layer dimensions (for CNN).
         dropout: Dropout probability.
         use_mlp_threshold: Use MLP for segments shorter than this.
+        tcn_channels: Channel dimensions for TCN blocks (reversed).
+        tcn_kernel_size: Kernel size for TCN.
+        multiscale_kernel_sizes: Kernel sizes for multi-scale branches.
+        multiscale_channels: Channels per branch for multi-scale.
     
     Returns:
         Decoder module.
     """
+    # Use MLP for very short segments regardless of encoder_type
     if output_length < use_mlp_threshold:
         return SegmentDecoderMLP(latent_dim, output_length, hidden_dims, dropout)
+    
+    # Select decoder based on type (matches encoder)
+    if encoder_type == "tcn":
+        # Reverse channels for decoder
+        decoder_channels = list(reversed(tcn_channels)) if tcn_channels else None
+        return TCNDecoder(
+            latent_dim=latent_dim,
+            output_length=output_length,
+            num_channels=decoder_channels,
+            kernel_size=tcn_kernel_size,
+            dropout=dropout,
+        )
+    elif encoder_type == "multiscale":
+        return MultiScaleDecoder(
+            latent_dim=latent_dim,
+            output_length=output_length,
+            branch_channels=multiscale_channels,
+            kernel_sizes=multiscale_kernel_sizes,
+            dropout=dropout,
+        )
+    elif encoder_type == "cnn":
+        return SegmentDecoderCNN(latent_dim, output_length, hidden_dims, dropout)
     else:
-        return SegmentDecoder(latent_dim, output_length, hidden_dims, dropout)
+        raise ValueError(f"Unknown decoder type: {encoder_type}. Use 'tcn', 'cnn', or 'multiscale'.")

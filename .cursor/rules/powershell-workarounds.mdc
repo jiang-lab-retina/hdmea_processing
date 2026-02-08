@@ -1,0 +1,79 @@
+---
+description: Workarounds for macOS SSH remote + PowerShell 5.1 AI terminal
+alwaysApply: true
+---
+
+# AI Terminal Workarounds (macOS SSH Remote to Windows)
+
+This workspace is on a Windows network drive (M:) accessed from macOS via SSH.
+The AI terminal is hardcoded to PowerShell 5.1 and cannot be changed.
+
+## CRITICAL: False "Invalid arguments" Errors
+
+The Write and StrReplace tools report "Invalid arguments" on ALL drives (both M: and C:),
+but the operations ACTUALLY SUCCEED. This is a Cursor bug with SSH remote connections.
+
+Root cause: Cursor's LocalWriteExecutor has a 3-second watchdog timeout on its
+handleBlockReason pre-write check. Over SSH remote, this check requires a round-trip
+to the macOS client, which exceeds 3 seconds. The watchdog fires and reports failure,
+but the underlying Node.js file write still completes successfully.
+
+Evidence from Cursor Agent Exec log:
+  [watchdog, LocalWriteExecutor] handleBlockReason still not completed after 3000ms
+
+Additionally, path format mismatch (macOS sends /c:/... Unix-style URIs that Windows
+flags as "invalid WIN32 path characters") contributes to validation failures.
+
+Affected tools:
+- Write tool: Reports error but file IS created with correct content
+- StrReplace tool: Reports error but edit IS applied correctly
+- Read tool: Works normally, no false errors
+- Delete tool: Works normally, no false errors
+
+IMPORTANT: Do NOT retry or use fallback methods when you see "Invalid arguments"
+from Write or StrReplace. Verify with Read instead -- the change is likely already applied.
+
+## CRITICAL: Reverting AI Edits (Cursor checkpoints broken)
+
+Because the tools report false errors, Cursor's built-in checkpoint/revert system
+does NOT track these edits. The user CANNOT use Cursor's "Revert" to undo AI changes.
+
+Workaround: Use git as the safety net for reverting.
+
+### Before making edits (AI must do this automatically):
+
+1. Before editing ANY file, run: git stash push -m "pre-ai-edit" -- <filepath>
+   This saves the current state so the user can restore it.
+   If the file has no changes to stash, skip this step.
+2. Alternatively, for multi-file edits, run: git stash push -m "pre-ai-edit"
+   to stash all current working changes first.
+
+### IMPORTANT rules for the stash workflow:
+
+- Only stash ONCE at the start of a task, not before every individual edit.
+- If git stash reports "No local changes to save", proceed without stashing.
+- After all edits are done, tell the user: "To revert these changes, run:
+  git checkout -- <file1> <file2> ... or git stash pop to restore previous state."
+
+## PowerShell 5.1 Shell Limitations
+
+1. Never use && to chain commands - use ; or separate Shell calls
+2. Use working_directory parameter instead of cd path && command
+3. Avoid inline strings with $, |, or complex quotes in Shell commands
+4. For complex Python scripts, write to a .py file first, then run it
+
+## Common PowerShell Failures
+
+- `The token '&&' is not a valid statement separator` -> Use ; or separate calls
+- `Empty pipe element is not allowed` -> Markdown tables with | break PowerShell
+- `Missing argument in parameter list` -> $ in strings expanded by PowerShell
+- `UnexpectedToken` -> Quotes or special chars parsed by PowerShell before Python
+- `Missing expression after comma` -> Multi-arg function calls in inline Python
+
+## File Writing Strategy
+
+1. Use Write tool directly - it works despite reporting errors
+2. Use StrReplace to edit existing files - it works despite reporting errors
+3. Always verify with Read after write/edit if unsure
+4. For Shell-based Python file writing, keep one-liners simple
+5. Use base64 encoding for content with special characters via Shell

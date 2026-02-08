@@ -313,3 +313,105 @@ def load_artifacts_for_visualization(
     logger.info(f"Loaded {len(artifacts)} artifacts for group {group}")
     
     return artifacts
+
+
+def save_labeled_dataframe(
+    df: pd.DataFrame,
+    groups: list,
+    results_dir: Path,
+    mosaic_results: Optional[pd.DataFrame],
+    output_path: Path,
+) -> Path:
+    """
+    Merge cluster labels and mosaic validation back into the original DataFrame.
+
+    Adds columns:
+        - subtype: e.g. "DSGC_3" or "DSGC_3_invalid"
+        - valid_mosaic: bool (True if subtype passes mosaic validation)
+
+    Uses two strategies to match cell_ids back to the original DataFrame:
+        1. Direct index match (when cell_id is the original string index).
+        2. Positional alignment (when cell_id is an integer from a
+           reset_index run): re-filters df by group and aligns rows
+           by position.
+
+    Args:
+        df: Original filtered DataFrame with 'group' column.
+        groups: List of group names that were processed.
+        results_dir: Directory containing per-group cluster_assignments.parquet.
+        mosaic_results: DataFrame from mosaic validation (group, dec_cluster,
+            mosaic_validation columns), or None if mosaic was skipped.
+        output_path: Where to save the labeled parquet file.
+
+    Returns:
+        Path to saved file.
+    """
+    # Build a lookup: (group, cluster_id) -> mosaic_valid (bool)
+    mosaic_lookup = {}
+    if mosaic_results is not None:
+        for _, row in mosaic_results.iterrows():
+            key = (row['group'], int(row['dec_cluster']))
+            mosaic_lookup[key] = bool(row['mosaic_validation'])
+
+    # Initialize new columns
+    df = df.copy()
+    df['subtype'] = ''
+    df['valid_mosaic'] = False
+
+    for group_name in groups:
+        cluster_path = results_dir / group_name / "cluster_assignments.parquet"
+        if not cluster_path.exists():
+            logger.warning(f"Cluster file not found: {cluster_path}")
+            continue
+
+        cluster_df = pd.read_parquet(cluster_path)
+
+        # Check whether cell_id matches df.index (string) or is positional (int)
+        sample_id = cluster_df['cell_id'].iloc[0]
+        use_positional = sample_id not in df.index
+
+        if use_positional:
+            # Positional fallback: re-filter df to this group in the same order
+            group_mask = df['group'] == group_name
+            group_indices = df.index[group_mask]
+
+            if len(group_indices) != len(cluster_df):
+                logger.warning(
+                    f"  {group_name}: positional mismatch "
+                    f"(df has {len(group_indices)} cells, "
+                    f"cluster_assignments has {len(cluster_df)}). Skipping."
+                )
+                continue
+
+            for pos, (_, row) in enumerate(cluster_df.iterrows()):
+                orig_idx = group_indices[pos]
+                cluster_id = int(row['dec_cluster'])
+
+                is_valid = mosaic_lookup.get((group_name, cluster_id), False)
+                suffix = '' if is_valid else '_invalid'
+                df.at[orig_idx, 'subtype'] = f"{group_name}_{cluster_id}{suffix}"
+                df.at[orig_idx, 'valid_mosaic'] = is_valid
+        else:
+            # Direct index match
+            for _, row in cluster_df.iterrows():
+                orig_idx = row['cell_id']
+                cluster_id = int(row['dec_cluster'])
+
+                is_valid = mosaic_lookup.get((group_name, cluster_id), False)
+                suffix = '' if is_valid else '_invalid'
+
+                if orig_idx in df.index:
+                    df.at[orig_idx, 'subtype'] = f"{group_name}_{cluster_id}{suffix}"
+                    df.at[orig_idx, 'valid_mosaic'] = is_valid
+
+    # Summary
+    n_labeled = (df['subtype'] != '').sum()
+    n_valid = df['valid_mosaic'].sum()
+    logger.info(f"Labeled {n_labeled}/{len(df)} cells, {n_valid} in valid subtypes")
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(output_path, index=True)
+    logger.info(f"Saved labeled DataFrame to {output_path}")
+
+    return output_path

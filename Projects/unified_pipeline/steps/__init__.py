@@ -43,6 +43,7 @@ Available Steps:
     - compute_ap_tracking_step: Compute AP tracking
     - electrode_alignment_step: Align electrode coords to stimulus space
     - section_by_direction_step: Section by direction (DSGC)
+    - set_6_compatibility_step: Create set6-compatible data from set6a recordings
 """
 
 # Step imports
@@ -57,6 +58,7 @@ from .cell_type import add_cell_type_step
 from .ap_tracking import compute_ap_tracking_step
 from .electrode_alignment import electrode_alignment_step
 from .dsgc import section_by_direction_step
+from .set_6_compatibility import set_6_compatibility_step
 
 __all__ = [
     # Step 1
@@ -83,6 +85,8 @@ __all__ = [
     "electrode_alignment_step",
     # Step 12 - DSGC
     "section_by_direction_step",
+    # Set6 compatibility
+    "set_6_compatibility_step",
     # Utilities
     "skip_if_completed",
 ]

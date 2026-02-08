@@ -1,0 +1,56 @@
+{
+  "group": "ipRGC",
+  "baseline_prevalence": 1.0,
+  "initial_gmm": {
+    "purity": 1.0,
+    "top_enriched": [
+      {
+        "cluster": 0,
+        "n_cells": 44,
+        "n_iprgc": 44,
+        "fraction": 1.0,
+        "enrichment": 1.0
+      },
+      {
+        "cluster": 1,
+        "n_cells": 57,
+        "n_iprgc": 57,
+        "fraction": 1.0,
+        "enrichment": 1.0
+      },
+      {
+        "cluster": 2,
+        "n_cells": 351,
+        "n_iprgc": 351,
+        "fraction": 1.0,
+        "enrichment": 1.0
+      }
+    ]
+  },
+  "dec_refined": {
+    "purity": 1.0,
+    "top_enriched": [
+      {
+        "cluster": 0,
+        "n_cells": 44,
+        "n_iprgc": 44,
+        "fraction": 1.0,
+        "enrichment": 1.0
+      },
+      {
+        "cluster": 1,
+        "n_cells": 57,
+        "n_iprgc": 57,
+        "fraction": 1.0,
+        "enrichment": 1.0
+      },
+      {
+        "cluster": 2,
+        "n_cells": 351,
+        "n_iprgc": 351,
+        "fraction": 1.0,
+        "enrichment": 1.0
+      }
+    ]
+  }
+}

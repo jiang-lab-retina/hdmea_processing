@@ -1,55 +1,55 @@
 {
   "group": "Other",
-  "baseline_prevalence": 0.1206896551724138,
+  "baseline_prevalence": 0.0,
   "initial_gmm": {
-    "purity": 0.8793103448275862,
+    "purity": 1.0,
     "top_enriched": [
       {
-        "cluster": 5,
-        "n_cells": 6,
-        "n_iprgc": 2,
-        "fraction": 0.3333333333333333,
-        "enrichment": 2.7619047619047614
-      },
-      {
-        "cluster": 3,
-        "n_cells": 20,
-        "n_iprgc": 6,
-        "fraction": 0.3,
-        "enrichment": 2.4857142857142853
-      },
-      {
         "cluster": 0,
-        "n_cells": 20,
-        "n_iprgc": 4,
-        "fraction": 0.2,
-        "enrichment": 1.6571428571428573
+        "n_cells": 727,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
+      },
+      {
+        "cluster": 1,
+        "n_cells": 2358,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
+      },
+      {
+        "cluster": 2,
+        "n_cells": 1500,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
       }
     ]
   },
   "dec_refined": {
-    "purity": 0.8793103448275862,
+    "purity": 1.0,
     "top_enriched": [
       {
-        "cluster": 3,
-        "n_cells": 25,
-        "n_iprgc": 7,
-        "fraction": 0.28,
-        "enrichment": 2.3200000000000003
-      },
-      {
-        "cluster": 5,
-        "n_cells": 25,
-        "n_iprgc": 5,
-        "fraction": 0.2,
-        "enrichment": 1.6571428571428573
-      },
-      {
         "cluster": 0,
-        "n_cells": 37,
-        "n_iprgc": 2,
-        "fraction": 0.05405405405405406,
-        "enrichment": 0.44787644787644787
+        "n_cells": 727,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
+      },
+      {
+        "cluster": 1,
+        "n_cells": 2358,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
+      },
+      {
+        "cluster": 2,
+        "n_cells": 1500,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
       }
     ]
   }

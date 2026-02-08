@@ -90,13 +90,17 @@ def plot_umap_embeddings(
     """
     Plot UMAP visualization of embeddings colored by cluster.
     
+    If iprgc_labels is provided, creates side-by-side plots:
+    - Left: clusters only
+    - Right: clusters with ipRGC overlay
+    
     Args:
         embeddings: (n_cells, 49) embeddings.
         labels: (n_cells,) cluster labels.
         title: Plot title.
         iprgc_labels: Optional binary labels to highlight ipRGCs.
         output_path: Path to save figure.
-        figsize: Figure size.
+        figsize: Figure size (doubled width if iprgc shown).
     
     Returns:
         Figure object.
@@ -105,56 +109,68 @@ def plot_umap_embeddings(
     reducer = umap.UMAP(
         n_neighbors=config.UMAP_N_NEIGHBORS,
         min_dist=config.UMAP_MIN_DIST,
+        spread=getattr(config, 'UMAP_SPREAD', 1.0),
         metric=config.UMAP_METRIC,
         random_state=config.UMAP_RANDOM_STATE,
+        repulsion_strength=getattr(config, 'UMAP_REPULSION_STRENGTH', 1.0),
+        local_connectivity=getattr(config, 'UMAP_LOCAL_CONNECTIVITY', 1.0),
     )
     coords = reducer.fit_transform(embeddings)
-    
-    fig, ax = plt.subplots(figsize=figsize)
     
     # Get unique labels for color mapping
     unique_labels = np.unique(labels)
     n_clusters = len(unique_labels)
-    
-    # Create colormap
     cmap = plt.cm.get_cmap('tab20', n_clusters)
     
-    # Plot each cluster
-    for i, label in enumerate(unique_labels):
-        mask = labels == label
-        ax.scatter(
-            coords[mask, 0], coords[mask, 1],
-            c=[cmap(i)],
-            label=f'Cluster {label}',
-            s=15,
-            alpha=0.7,
-        )
-    
-    # Highlight ipRGCs if provided
+    # Create figure with 1 or 2 subplots
     if iprgc_labels is not None:
-        iprgc_mask = iprgc_labels.astype(bool)
-        ax.scatter(
-            coords[iprgc_mask, 0], coords[iprgc_mask, 1],
-            facecolors='none',
-            edgecolors='red',
-            s=50,
-            linewidths=1.5,
-            label='ipRGC',
-            alpha=0.8,
-        )
-    
-    ax.set_xlabel('UMAP 1', fontsize=12)
-    ax.set_ylabel('UMAP 2', fontsize=12)
-    ax.set_title(title, fontsize=14)
-    
-    # Legend (limit to 10 clusters + ipRGC)
-    if n_clusters <= 10:
-        ax.legend(loc='best', fontsize=8, markerscale=1.5)
+        fig, axes = plt.subplots(1, 2, figsize=(figsize[0] * 2, figsize[1]))
+        ax_left, ax_right = axes
     else:
-        # Show colorbar instead
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, n_clusters))
-        sm.set_array([])
-        cbar = plt.colorbar(sm, ax=ax, label='Cluster')
+        fig, ax_left = plt.subplots(figsize=figsize)
+        ax_right = None
+    
+    # Helper to plot clusters on an axis
+    def plot_clusters(ax, show_iprgc=False, subtitle=""):
+        for i, label in enumerate(unique_labels):
+            mask = labels == label
+            ax.scatter(
+                coords[mask, 0], coords[mask, 1],
+                c=[cmap(i)],
+                label=f'Cluster {label}',
+                s=15,
+                alpha=0.7,
+            )
+        
+        if show_iprgc and iprgc_labels is not None:
+            iprgc_mask = iprgc_labels.astype(bool)
+            n_iprgc = iprgc_mask.sum()
+            ax.scatter(
+                coords[iprgc_mask, 0], coords[iprgc_mask, 1],
+                facecolors='none',
+                edgecolors='red',
+                s=50,
+                linewidths=1.5,
+                label=f'ipRGC (n={n_iprgc})',
+                alpha=0.8,
+            )
+        
+        ax.set_xlabel('UMAP 1', fontsize=12)
+        ax.set_ylabel('UMAP 2', fontsize=12)
+        ax.set_title(f"{title}{subtitle}", fontsize=14)
+        
+        # Colorbar for many clusters
+        if n_clusters > 10:
+            sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, n_clusters))
+            sm.set_array([])
+            plt.colorbar(sm, ax=ax, label='Cluster')
+    
+    # Plot left (clusters only)
+    plot_clusters(ax_left, show_iprgc=False, subtitle="" if ax_right is None else " (Clusters)")
+    
+    # Plot right (with ipRGC overlay) if applicable
+    if ax_right is not None:
+        plot_clusters(ax_right, show_iprgc=True, subtitle=" (+ ipRGC)")
     
     plt.tight_layout()
     
@@ -197,8 +213,11 @@ def plot_umap_comparison(
     reducer = umap.UMAP(
         n_neighbors=config.UMAP_N_NEIGHBORS,
         min_dist=config.UMAP_MIN_DIST,
+        spread=getattr(config, 'UMAP_SPREAD', 1.0),
         metric=config.UMAP_METRIC,
         random_state=config.UMAP_RANDOM_STATE,
+        repulsion_strength=getattr(config, 'UMAP_REPULSION_STRENGTH', 1.0),
+        local_connectivity=getattr(config, 'UMAP_LOCAL_CONNECTIVITY', 1.0),
     )
     
     coords_gmm = reducer.fit_transform(embeddings_gmm)
@@ -319,12 +338,240 @@ def plot_iprgc_enrichment(
     return fig
 
 
+def plot_umap_final(
+    embeddings: np.ndarray,
+    labels: np.ndarray,
+    group: str = "",
+    output_path: Path | None = None,
+    figsize: Tuple[int, int] = (10, 8),
+) -> plt.Figure:
+    """
+    Clean single-panel UMAP of the final (DEC-refined) clusters.
+
+    Each cluster is shown with its label and cell count in the legend.
+
+    Args:
+        embeddings: (n_cells, D) final embeddings.
+        labels: (n_cells,) integer cluster assignments.
+        group: Group name for title.
+        output_path: Path to save figure.
+        figsize: Figure size.
+
+    Returns:
+        Figure object.
+    """
+    # Compute UMAP
+    reducer = umap.UMAP(
+        n_neighbors=config.UMAP_N_NEIGHBORS,
+        min_dist=config.UMAP_MIN_DIST,
+        spread=getattr(config, 'UMAP_SPREAD', 1.0),
+        metric=config.UMAP_METRIC,
+        random_state=config.UMAP_RANDOM_STATE,
+        repulsion_strength=getattr(config, 'UMAP_REPULSION_STRENGTH', 1.0),
+        local_connectivity=getattr(config, 'UMAP_LOCAL_CONNECTIVITY', 1.0),
+    )
+    coords = reducer.fit_transform(embeddings)
+
+    unique_labels = np.sort(np.unique(labels))
+    n_clusters = len(unique_labels)
+    cmap = plt.cm.get_cmap('tab20', max(n_clusters, 1))
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for i, lab in enumerate(unique_labels):
+        mask = labels == lab
+        n = mask.sum()
+        ax.scatter(
+            coords[mask, 0], coords[mask, 1],
+            c=[cmap(i)],
+            label=f'C{lab} (n={n})',
+            s=12,
+            alpha=0.7,
+        )
+
+    ax.set_xlabel('UMAP 1', fontsize=12)
+    ax.set_ylabel('UMAP 2', fontsize=12)
+    title = f'{group}: Final Clusters (k={n_clusters})' if group else f'Final Clusters (k={n_clusters})'
+    ax.set_title(title, fontsize=14)
+    ax.legend(
+        fontsize=8,
+        markerscale=2,
+        loc='center left',
+        bbox_to_anchor=(1.0, 0.5),
+        frameon=True,
+    )
+
+    plt.tight_layout()
+
+    if output_path:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=config.FIGURE_DPI, bbox_inches='tight')
+        logger.info(f"Saved final UMAP to {output_path}")
+
+    return fig
+
+
+def plot_umap_supervised(
+    embeddings: np.ndarray,
+    labels: np.ndarray,
+    group: str = "",
+    output_path: Path | None = None,
+    figsize: Tuple[int, int] = (10, 8),
+) -> plt.Figure:
+    """
+    Supervised UMAP projection: uses cluster labels to guide the 2D layout.
+
+    This produces cleaner visual separation without changing the clustering
+    itself -- it simply tells UMAP which points belong together.
+
+    Args:
+        embeddings: (n_cells, D) final embeddings.
+        labels: (n_cells,) integer cluster assignments.
+        group: Group name for title.
+        output_path: Path to save figure.
+        figsize: Figure size.
+
+    Returns:
+        Figure object.
+    """
+    target_weight = getattr(config, 'UMAP_TARGET_WEIGHT', 0.02)
+    reducer = umap.UMAP(
+        n_neighbors=config.UMAP_N_NEIGHBORS,
+        min_dist=config.UMAP_MIN_DIST,
+        spread=getattr(config, 'UMAP_SPREAD', 1.0),
+        metric=config.UMAP_METRIC,
+        random_state=config.UMAP_RANDOM_STATE,
+        target_weight=target_weight,
+        repulsion_strength=getattr(config, 'UMAP_REPULSION_STRENGTH', 1.0),
+        local_connectivity=getattr(config, 'UMAP_LOCAL_CONNECTIVITY', 1.0),
+    )
+    coords = reducer.fit_transform(embeddings, y=labels)
+
+    unique_labels = np.sort(np.unique(labels))
+    n_clusters = len(unique_labels)
+    cmap = plt.cm.get_cmap('tab20', max(n_clusters, 1))
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for i, lab in enumerate(unique_labels):
+        mask = labels == lab
+        n = mask.sum()
+        ax.scatter(
+            coords[mask, 0], coords[mask, 1],
+            c=[cmap(i)],
+            label=f'C{lab} (n={n})',
+            s=12,
+            alpha=0.7,
+        )
+
+    ax.set_xlabel('UMAP 1', fontsize=12)
+    ax.set_ylabel('UMAP 2', fontsize=12)
+    title = f'{group}: Semi-supervised UMAP (k={n_clusters})' if group else f'Semi-supervised UMAP (k={n_clusters})'
+    ax.set_title(title, fontsize=14)
+    ax.legend(
+        fontsize=8,
+        markerscale=2,
+        loc='center left',
+        bbox_to_anchor=(1.0, 0.5),
+        frameon=True,
+    )
+
+    plt.tight_layout()
+
+    if output_path:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=config.FIGURE_DPI, bbox_inches='tight')
+        logger.info(f"Saved supervised UMAP to {output_path}")
+
+    return fig
+
+
+def plot_umap_supervised_final(
+    embeddings: np.ndarray,
+    labels: np.ndarray,
+    group: str = "",
+    output_path: Path | None = None,
+    figsize: Tuple[int, int] = (10, 8),
+) -> plt.Figure:
+    """
+    Supervised UMAP using final (DEC-refined) cluster labels.
+
+    Uses DEC labels both for supervision (y=labels) and for coloring,
+    showing only the final validated clusters.
+
+    Args:
+        embeddings: (n_cells, D) final embeddings.
+        labels: (n_cells,) integer DEC cluster assignments.
+        group: Group name for title.
+        output_path: Path to save figure.
+        figsize: Figure size.
+
+    Returns:
+        Figure object.
+    """
+    target_weight = getattr(config, 'UMAP_TARGET_WEIGHT', 0.02)
+    reducer = umap.UMAP(
+        n_neighbors=config.UMAP_N_NEIGHBORS,
+        min_dist=config.UMAP_MIN_DIST,
+        spread=getattr(config, 'UMAP_SPREAD', 1.0),
+        metric=config.UMAP_METRIC,
+        random_state=config.UMAP_RANDOM_STATE,
+        target_weight=target_weight,
+        repulsion_strength=getattr(config, 'UMAP_REPULSION_STRENGTH', 1.0),
+        local_connectivity=getattr(config, 'UMAP_LOCAL_CONNECTIVITY', 1.0),
+    )
+    coords = reducer.fit_transform(embeddings, y=labels)
+
+    unique_labels = np.sort(np.unique(labels))
+    n_clusters = len(unique_labels)
+    cmap = plt.cm.get_cmap('tab20', max(n_clusters, 1))
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for i, lab in enumerate(unique_labels):
+        mask = labels == lab
+        n = mask.sum()
+        ax.scatter(
+            coords[mask, 0], coords[mask, 1],
+            c=[cmap(i)],
+            label=f'C{lab} (n={n})',
+            s=12,
+            alpha=0.7,
+        )
+
+    ax.set_xlabel('UMAP 1', fontsize=12)
+    ax.set_ylabel('UMAP 2', fontsize=12)
+    title = f'{group}: Supervised UMAP – Final Clusters (k={n_clusters})' if group else f'Supervised UMAP – Final Clusters (k={n_clusters})'
+    ax.set_title(title, fontsize=14)
+    ax.legend(
+        fontsize=8,
+        markerscale=2,
+        loc='center left',
+        bbox_to_anchor=(1.0, 0.5),
+        frameon=True,
+    )
+
+    plt.tight_layout()
+
+    if output_path:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=config.FIGURE_DPI, bbox_inches='tight')
+        logger.info(f"Saved supervised final UMAP to {output_path}")
+
+    return fig
+
+
 def plot_cluster_prototypes(
     segments: dict,
     labels: np.ndarray,
     cluster_id: int,
     output_path: Path | None = None,
     figsize: Tuple[int, int] = (14, 10),
+    iprgc_last_trial: np.ndarray | None = None,
+    iprgc_test_full: np.ndarray | None = None,
 ) -> plt.Figure:
     """
     Plot mean±SEM traces for a single cluster.
@@ -335,6 +582,11 @@ def plot_cluster_prototypes(
         cluster_id: Cluster to plot.
         output_path: Path to save figure.
         figsize: Figure size.
+        iprgc_last_trial: Optional (n_cells, T) array of last-trial iprgc_test
+            data. When provided, the iprgc_test subplot uses this instead of
+            the trial-averaged version in *segments*.
+        iprgc_test_full: Optional (n_cells, T) full-length preprocessed iprgc
+            trace. Takes priority over iprgc_last_trial when both are provided.
     
     Returns:
         Figure object.
@@ -352,7 +604,17 @@ def plot_cluster_prototypes(
     for i, (name, data) in enumerate(segments.items()):
         ax = axes[i]
         
-        cluster_data = data[mask]
+        # Use full iprgc trace for prototype (priority: full > last_trial > segment)
+        if name == "iprgc_test" and iprgc_test_full is not None:
+            cluster_data = iprgc_test_full[mask]
+            title_suffix = " (full, last trial)"
+        elif name == "iprgc_test" and iprgc_last_trial is not None:
+            cluster_data = iprgc_last_trial[mask]
+            title_suffix = " (last trial)"
+        else:
+            cluster_data = data[mask]
+            title_suffix = ""
+        
         mean_trace = np.mean(cluster_data, axis=0)
         sem_trace = np.std(cluster_data, axis=0) / np.sqrt(n_cells)
         
@@ -361,7 +623,7 @@ def plot_cluster_prototypes(
         ax.plot(x, mean_trace, 'b-', linewidth=1.5)
         ax.fill_between(x, mean_trace - sem_trace, mean_trace + sem_trace, alpha=0.3)
         
-        ax.set_title(name, fontsize=10)
+        ax.set_title(f"{name}{title_suffix}", fontsize=10)
         ax.set_xlabel('Time')
         ax.set_ylabel('Response')
     
@@ -419,11 +681,15 @@ def generate_all_plots(
             z_cols = [c for c in emb_init.columns if c.startswith('z_')]
             emb = emb_init[z_cols].values
         
+        # Check if ipRGC highlighting is enabled
+        show_iprgc = getattr(config, 'UMAP_SHOW_IPRGC', True)
+        iprgc_labels = artifacts.get('iprgc_labels') if show_iprgc else None
+        
         plot_umap_embeddings(
             embeddings=emb,
             labels=artifacts.get('gmm_labels', np.zeros(len(emb))),
             title=f'{group}: GMM Clustering',
-            iprgc_labels=artifacts.get('iprgc_labels'),
+            iprgc_labels=iprgc_labels,
             output_path=output_dir / "umap_gmm.png",
         )
         plt.close()
@@ -436,11 +702,15 @@ def generate_all_plots(
             z_cols = [c for c in emb_dec.columns if c.startswith('z_')]
             emb = emb_dec[z_cols].values
         
+        # Check if ipRGC highlighting is enabled
+        show_iprgc = getattr(config, 'UMAP_SHOW_IPRGC', True)
+        iprgc_labels = artifacts.get('iprgc_labels') if show_iprgc else None
+        
         plot_umap_embeddings(
             embeddings=emb,
             labels=artifacts.get('dec_labels', np.zeros(len(emb))),
             title=f'{group}: DEC-Refined Clustering',
-            iprgc_labels=artifacts.get('iprgc_labels'),
+            iprgc_labels=iprgc_labels,
             output_path=output_dir / "umap_dec.png",
         )
         plt.close()
@@ -457,16 +727,51 @@ def generate_all_plots(
             z_cols = [c for c in emb_dec.columns if c.startswith('z_')]
             emb_dec = emb_dec[z_cols].values
         
+        # Check if ipRGC highlighting is enabled
+        show_iprgc = getattr(config, 'UMAP_SHOW_IPRGC', True)
+        iprgc_labels = artifacts.get('iprgc_labels') if show_iprgc else None
+        
         plot_umap_comparison(
             embeddings_gmm=emb_init,
             embeddings_dec=emb_dec,
             labels_gmm=artifacts.get('gmm_labels', np.zeros(len(emb_init))),
             labels_dec=artifacts.get('dec_labels', np.zeros(len(emb_dec))),
-            iprgc_labels=artifacts.get('iprgc_labels'),
+            iprgc_labels=iprgc_labels,
             output_path=output_dir / "umap_comparison.png",
         )
         plt.close()
     
+    # Final clusters UMAP (clean single-panel with legend)
+    if 'embeddings_dec' in artifacts and 'dec_labels' in artifacts:
+        emb_dec = artifacts['embeddings_dec']
+        if not isinstance(emb_dec, np.ndarray):
+            z_cols = [c for c in emb_dec.columns if c.startswith('z_')]
+            emb_dec = emb_dec[z_cols].values
+
+        plot_umap_final(
+            embeddings=emb_dec,
+            labels=artifacts['dec_labels'],
+            group=group,
+            output_path=output_dir / "umap_final.png",
+        )
+        plt.close()
+
+        plot_umap_supervised(
+            embeddings=emb_dec,
+            labels=artifacts['gmm_labels'],
+            group=group,
+            output_path=output_dir / "umap_supervised.png",
+        )
+        plt.close()
+
+        plot_umap_supervised_final(
+            embeddings=emb_dec,
+            labels=artifacts['dec_labels'],
+            group=group,
+            output_path=output_dir / "umap_supervised_final.png",
+        )
+        plt.close()
+
     # ipRGC enrichment
     if 'dec_metrics' in artifacts:
         plot_iprgc_enrichment(
@@ -476,16 +781,17 @@ def generate_all_plots(
         )
         plt.close()
     
-    # Cluster prototypes (top 3 enriched)
-    if 'segments' in artifacts and 'dec_labels' in artifacts and 'dec_metrics' in artifacts:
+    # Cluster prototypes (all clusters)
+    if 'dec_labels' in artifacts:
         prototypes_dir = output_dir / "prototypes"
         prototypes_dir.mkdir(exist_ok=True)
         
-        top_enriched = artifacts['dec_metrics'].get('top_enriched', [])
-        for cluster_info in top_enriched[:3]:
-            cluster_id = cluster_info['cluster']
+        # Use full-length segments for prototypes (not truncated clustering segments)
+        proto_segments = artifacts.get('full_segments', artifacts.get('segments', {}))
+        all_clusters = sorted(np.unique(artifacts['dec_labels']))
+        for cluster_id in all_clusters:
             plot_cluster_prototypes(
-                segments=artifacts['segments'],
+                segments=proto_segments,
                 labels=artifacts['dec_labels'],
                 cluster_id=cluster_id,
                 output_path=prototypes_dir / f"cluster_{cluster_id}.png",

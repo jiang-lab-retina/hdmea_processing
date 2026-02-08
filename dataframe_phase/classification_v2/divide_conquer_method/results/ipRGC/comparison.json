@@ -1,0 +1,9 @@
+{
+  "group": "ipRGC",
+  "k": 9,
+  "gmm_purity": 1.0,
+  "dec_purity": 1.0,
+  "purity_improvement": 0.0,
+  "gmm_top_enrichment": 1.0,
+  "dec_top_enrichment": 1.0
+}

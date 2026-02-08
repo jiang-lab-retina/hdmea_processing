@@ -115,7 +115,9 @@ class IDEC(nn.Module):
         autoencoder: Pre-trained autoencoder model.
         n_clusters: Number of clusters.
         alpha: Student-t degrees of freedom.
-        initial_centers: Initial cluster centers from GMM.
+        initial_centers: Initial cluster centers from GMM (in standardized space).
+        embedding_mean: Mean for standardization (from training data).
+        embedding_std: Std for standardization (from training data).
     """
     
     def __init__(
@@ -124,11 +126,23 @@ class IDEC(nn.Module):
         n_clusters: int,
         alpha: float = 1.0,
         initial_centers: Optional[np.ndarray] = None,
+        embedding_mean: Optional[np.ndarray] = None,
+        embedding_std: Optional[np.ndarray] = None,
     ):
         super().__init__()
         
         self.autoencoder = autoencoder
         self.embedding_dim = autoencoder.total_latent_dim
+        
+        # Store standardization parameters as buffers (not learnable)
+        if embedding_mean is not None:
+            self.register_buffer('embedding_mean', torch.tensor(embedding_mean, dtype=torch.float32))
+            self.register_buffer('embedding_std', torch.tensor(embedding_std, dtype=torch.float32))
+            self.use_standardization = True
+        else:
+            self.register_buffer('embedding_mean', torch.zeros(self.embedding_dim))
+            self.register_buffer('embedding_std', torch.ones(self.embedding_dim))
+            self.use_standardization = False
         
         # DEC clustering layer
         self.dec_layer = DECLayer(
@@ -137,6 +151,10 @@ class IDEC(nn.Module):
             alpha=alpha,
             initial_centers=initial_centers,
         )
+    
+    def _standardize(self, z: torch.Tensor) -> torch.Tensor:
+        """Standardize embeddings to match GMM center space."""
+        return (z - self.embedding_mean) / (self.embedding_std + 1e-8)
     
     def forward(self, segments: dict[str, torch.Tensor]) -> dict:
         """
@@ -148,18 +166,22 @@ class IDEC(nn.Module):
         Returns:
             Dict with:
                 - 'q': Soft cluster assignments
-                - 'embedding': Full embedding
+                - 'embedding': Full embedding (standardized)
                 - 'reconstructions': Per-segment reconstructions
         """
         # Get autoencoder output
         ae_output = self.autoencoder(segments)
         
-        # Get soft assignments
-        q = self.dec_layer(ae_output['full_embedding'])
+        # Standardize embeddings to match GMM center space
+        z_raw = ae_output['full_embedding']
+        z_std = self._standardize(z_raw)
+        
+        # Get soft assignments using standardized embeddings
+        q = self.dec_layer(z_std)
         
         return {
             'q': q,
-            'embedding': ae_output['full_embedding'],
+            'embedding': z_std,  # Return standardized embedding
             'reconstructions': ae_output['reconstructions'],
         }
     
@@ -207,7 +229,7 @@ def cluster_balance_loss(q: torch.Tensor) -> torch.Tensor:
         q: (batch, k) soft assignments.
     
     Returns:
-        Negative entropy of cluster proportions (to minimize).
+        (1 - normalized_entropy): 0 when balanced, 1 when collapsed.
     """
     # Cluster proportions: average soft assignment per cluster
     cluster_props = q.mean(dim=0)  # (k,)
@@ -216,10 +238,89 @@ def cluster_balance_loss(q: torch.Tensor) -> torch.Tensor:
     # Higher entropy = more uniform distribution = balanced clusters
     entropy = -torch.sum(cluster_props * torch.log(cluster_props + 1e-10))
     
-    # Return negative entropy so minimizing loss = maximizing entropy
     # Normalize by log(k) so it's in [0, 1]
     max_entropy = torch.log(torch.tensor(q.size(1), dtype=torch.float32, device=q.device))
-    return -entropy / max_entropy  # Returns value in [-1, 0]
+    normalized_entropy = entropy / max_entropy
+    
+    # Return (1 - entropy) so: balanced → 0, collapsed → 1
+    # Minimizing this encourages balanced clusters
+    return 1.0 - normalized_entropy
+
+
+def iprgc_enrichment_loss(
+    q: torch.Tensor,
+    iprgc_mask: torch.Tensor,
+    target_indices: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Encourage ipRGC cells to concentrate into precomputed target clusters
+    while pushing non-ipRGC cells out of those clusters.
+
+    Two components (weighted equally):
+      1. **Concentration**: pull ipRGC cells toward target clusters.
+      2. **Purity**: maximize the ipRGC fraction inside target clusters,
+         which gives gradients to non-ipRGC cells to leave.
+
+    Args:
+        q: (batch, k) soft cluster assignments.
+        iprgc_mask: (batch,) boolean mask for ipRGC cells.
+        target_indices: (n_target,) precomputed global cluster indices
+            (from ``compute_iprgc_target_clusters``).
+
+    Returns:
+        Loss in [0, 1]: 0 = perfect concentration and purity.
+    """
+    if iprgc_mask.sum() == 0:
+        return torch.tensor(0.0, device=q.device)
+
+    q_iprgc = q[iprgc_mask]  # (n_iprgc, k)
+
+    # --- Part 1: Concentration ------------------------------------------------
+    # Maximise the total soft assignment of ipRGC cells to target clusters.
+    q_iprgc_top = q_iprgc[:, target_indices].sum(dim=1)  # (n_iprgc,)
+    loss_conc = 1.0 - q_iprgc_top.mean()
+
+    # --- Part 2: Purity -------------------------------------------------------
+    # Maximise ipRGC fraction of the soft mass inside each target cluster.
+    # This provides gradient for non-ipRGC cells to move *away* from targets.
+    q_target = q[:, target_indices]                       # (batch, n_target)
+    iprgc_mass = q_target[iprgc_mask].sum(dim=0)          # (n_target,)
+    total_mass = q_target.sum(dim=0)                      # (n_target,)
+    purity = iprgc_mass / (total_mass + 1e-10)            # (n_target,)
+    loss_purity = 1.0 - purity.mean()
+
+    return 0.5 * loss_conc + 0.5 * loss_purity
+
+
+def compute_iprgc_target_clusters(
+    q_all: torch.Tensor,
+    iprgc_labels: np.ndarray,
+    n_target_clusters: int,
+) -> torch.Tensor:
+    """
+    Identify the top-N clusters by global ipRGC soft-assignment fraction.
+
+    Called alongside ``_compute_target_distribution`` every ``update_interval``
+    iterations so that the target clusters are stable within each phase.
+
+    Args:
+        q_all: (N, k) soft assignments for ALL samples (not a mini-batch).
+        iprgc_labels: (N,) boolean array marking ipRGC cells.
+        n_target_clusters: Number of target clusters to select.
+
+    Returns:
+        (n_target,) int64 tensor of cluster indices on CPU.
+    """
+    iprgc_mask = torch.tensor(iprgc_labels, dtype=torch.bool)
+    q_iprgc = q_all[iprgc_mask]                           # (n_iprgc, k)
+    iprgc_mass = q_iprgc.sum(dim=0)                       # (k,)
+    total_mass = q_all.sum(dim=0)                          # (k,)
+    iprgc_frac = iprgc_mass / (total_mass + 1e-10)        # (k,)
+
+    n_top = min(n_target_clusters, q_all.size(1))
+    _, top_indices = torch.topk(iprgc_frac, n_top)
+
+    return top_indices.cpu()
 
 
 def reconstruction_loss(

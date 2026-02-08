@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import json
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypedDict, Union
+from typing_extensions import NotRequired
 
 if TYPE_CHECKING:
     from hdmea.pipeline.session import PipelineSession
@@ -67,10 +68,24 @@ DEFAULT_CONFIG_DIR = Path(__file__).parent.parent.parent.parent / "config" / "st
 
 
 class StimuliConfigDict(TypedDict):
-    """Type definition for stimulus section_kwargs from JSON config files."""
+    """Type definition for stimulus section_kwargs from JSON config files.
+    
+    Required fields:
+        start_frame: First trial start frame (relative to movie content)
+        trial_length_frame: Duration of each trial in frames
+        repeat: Number of trial repetitions (per group if group_count > 1)
+    
+    Optional fields (for group-based sectioning):
+        group_count: Number of stimulus groups (e.g., 3 intensity levels). Defaults to 1.
+        group_gap: Frame gap between groups (not before first group). Defaults to 0.
+        
+    When group_count > 1, total_trials = group_count * repeat.
+    """
     start_frame: int
     trial_length_frame: int
     repeat: int
+    group_count: NotRequired[int]
+    group_gap: NotRequired[int]
 
 
 # =============================================================================
@@ -121,6 +136,8 @@ def _load_stimuli_config(
             - start_frame: int
             - trial_length_frame: int
             - repeat: int
+            - group_count: int (optional, for group-based sectioning)
+            - group_gap: int (optional, for group-based sectioning)
     
     Raises:
         FileNotFoundError: If config file doesn't exist.
@@ -185,11 +202,47 @@ def _load_stimuli_config(
             f"got {section_kwargs['repeat']}"
         )
     
-    return StimuliConfigDict(
-        start_frame=section_kwargs["start_frame"],
-        trial_length_frame=section_kwargs["trial_length_frame"],
-        repeat=section_kwargs["repeat"],
-    )
+    # Validate optional group-based sectioning fields
+    group_count = section_kwargs.get("group_count")
+    group_gap = section_kwargs.get("group_gap")
+    
+    if group_count is not None:
+        if not isinstance(group_count, int):
+            raise ValueError(
+                f"Config '{movie_name}' section_kwargs.group_count must be int, "
+                f"got {type(group_count).__name__}"
+            )
+        if group_count < 1:
+            raise ValueError(
+                f"Config '{movie_name}' section_kwargs.group_count must be >= 1, "
+                f"got {group_count}"
+            )
+    
+    if group_gap is not None:
+        if not isinstance(group_gap, int):
+            raise ValueError(
+                f"Config '{movie_name}' section_kwargs.group_gap must be int, "
+                f"got {type(group_gap).__name__}"
+            )
+        if group_gap < 0:
+            raise ValueError(
+                f"Config '{movie_name}' section_kwargs.group_gap must be >= 0, "
+                f"got {group_gap}"
+            )
+    
+    # Build result dict with required and optional fields
+    result: StimuliConfigDict = {
+        "start_frame": section_kwargs["start_frame"],
+        "trial_length_frame": section_kwargs["trial_length_frame"],
+        "repeat": section_kwargs["repeat"],
+    }
+    
+    if group_count is not None:
+        result["group_count"] = group_count
+    if group_gap is not None:
+        result["group_gap"] = group_gap
+    
+    return result
 
 
 def _validate_all_configs(
@@ -250,8 +303,13 @@ def _calculate_trial_boundaries(
     """
     Calculate trial boundaries in sample indices from JSON config.
     
+    Supports both simple and group-based sectioning:
+    - Simple: N trials of length trial_length_frame
+    - Group-based: group_count groups, each with repeat trials, with group_gap between groups
+    
     Args:
-        section_kwargs: Dict with start_frame, trial_length_frame, repeat.
+        section_kwargs: Dict with start_frame, trial_length_frame, repeat,
+            and optional group_count and group_gap.
         section_frame_start: Frame number where movie section starts.
         frame_timestamps: Array mapping frame indices to sample indices.
     
@@ -259,23 +317,39 @@ def _calculate_trial_boundaries(
         List of (start_sample, end_sample) tuples, one per trial.
     
     Note:
-        Formula per trial n:
-        start_frame = section_frame_start + PRE_MARGIN_FRAME_NUM + 
-                      section_kwargs['start_frame'] + (n * trial_length_frame)
-        start_sample = frame_timestamps[start_frame]
+        For simple sectioning (group_count=1 or not specified):
+            trial_start = section_frame_start + PRE_MARGIN + start_frame + (n * trial_length_frame)
+        
+        For group-based sectioning:
+            total_trials = group_count * repeat
+            cumulative_gap = (n // repeat) * group_gap  # Gap after each group
+            trial_start = section_frame_start + PRE_MARGIN + start_frame + 
+                          (n * trial_length_frame) + cumulative_gap
     """
     start_frame = section_kwargs["start_frame"]
     trial_length_frame = section_kwargs["trial_length_frame"]
     repeat = section_kwargs["repeat"]
     
+    # Support group-based sectioning (backward compatible)
+    group_count = section_kwargs.get("group_count", 1)
+    group_gap = section_kwargs.get("group_gap", 0)
+    
+    # Total number of trials
+    total_trials = group_count * repeat
+    
     boundaries: List[Tuple[int, int]] = []
     max_frame = len(frame_timestamps) - 1
     
-    for n in range(repeat):
+    for n in range(total_trials):
+        # Calculate cumulative gap based on which group this trial belongs to
+        # No gap before the first group
+        group_idx = n // repeat
+        cumulative_gap = group_idx * group_gap
+        
         # Calculate trial start frame
         trial_start_frame = (
             section_frame_start + PRE_MARGIN_FRAME_NUM + start_frame + 
-            (n * trial_length_frame)
+            (n * trial_length_frame) + cumulative_gap
         )
         trial_end_frame = trial_start_frame + trial_length_frame
         

@@ -1,0 +1,29 @@
+{
+    "name": "green_blue_3s_3i_3x_64_128_255",
+    "display_name": "Green/Blue Steps (3s on, 3s interval, 3x)",
+    "generate_kwargs": {
+        "stim_frame": 180,
+        "gap_frame": 180,
+        "green_intensity_1": 64, 
+        "blue_intensity_1": 64,
+        "green_intensity_2": 128, 
+        "blue_intensity_2": 128,
+        "green_intensity_3": 255, 
+        "blue_intensity_3": 255,
+        "repeat": 3
+    },
+    "section_kwargs": {
+        "group_count": 3,
+        "group_gap": 180,
+        "start_frame": 120,
+        "trial_length_frame": 720,
+        "repeat": 3
+    },
+    "analysis_windows": {
+        "on_window_ms": [0, 500],
+        "off_window_ms": [0, 500],
+        "sustained_window_ms": [500, 5000]
+    },
+    "description": "Green and blue light steps for chromatic response characterization."
+}
+

@@ -13,15 +13,16 @@ from typing import Dict, List
 
 import numpy as np
 
-# Support direct execution
-if __name__ == "__main__" and __package__ is None:
-    _this_dir = Path(__file__).resolve().parent.parent
-    _parent_dir = _this_dir.parent
-    if str(_parent_dir) not in sys.path:
-        sys.path.insert(0, str(_parent_dir))
-    __package__ = "divide_conquer_method.validation"
+# Support both direct and module execution
+_this_dir = Path(__file__).resolve().parent
+_parent_dir = _this_dir.parent.parent
+if str(_parent_dir) not in sys.path:
+    sys.path.insert(0, str(_parent_dir))
 
-from divide_conquer_method import config
+try:
+    from .. import config
+except ImportError:
+    from divide_conquer_method import config
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,36 @@
+---
+description: Avoid Unicode characters in code to prevent StrReplace tool failures
+alwaysApply: true
+---
+
+# Avoid Unicode Characters in Code
+
+When writing or editing code files, use only ASCII characters. Unicode characters that visually resemble ASCII can cause StrReplace tool failures due to byte-level mismatch.
+
+## Common Problem Characters
+
+- Multiplication sign (U+00D7) - use x or * instead
+- Minus sign (U+2212) - use - instead
+- Smart quotes (U+2018/2019/201C/201D) - use single or double quote instead
+- Ellipsis (U+2026) - use ... instead
+- Arrow (U+2192) - use -> instead
+
+## Why This Matters
+
+The StrReplace tool requires exact byte-for-byte matching. If a file contains Unicode multiplication sign but the replacement string uses ASCII x, the match fails with Invalid arguments error.
+
+## Example
+
+```python
+# BAD - Unicode multiplication sign (U+00D7)
+# Calculate total RF area as median [unicode x] cell count
+
+# GOOD - ASCII characters only
+# Calculate total RF area as median x cell count
+```
+
+## When Editing Files
+
+1. Read the file first to check for existing non-ASCII characters
+2. Use ASCII equivalents in all code and comments
+3. If StrReplace fails, check for Unicode using: [c for c in line if ord(c) > 127]

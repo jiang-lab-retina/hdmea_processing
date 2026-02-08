@@ -272,6 +272,80 @@ def _average_trials(trace_data) -> np.ndarray:
         raise ValueError(f"Unexpected trace shape: {arr.shape}")
 
 
+def _last_trial(trace_data) -> np.ndarray:
+    """
+    Extract the last trial from multi-trial trace data.
+
+    Handles multiple data formats:
+    - 1D array: single trial, return as-is
+    - 2D array: multiple trials, return last row (axis=0)
+    - Object array: ragged trials, return last element
+
+    Args:
+        trace_data: Raw trace data (1D array, 2D [trials, time], or object array).
+
+    Returns:
+        1D last-trial trace.
+    """
+    if trace_data is None:
+        raise ValueError("Trace data is None")
+
+    arr = np.asarray(trace_data)
+
+    if arr.ndim == 0 or arr.size == 0:
+        raise ValueError(f"Unexpected trace shape: {arr.shape}")
+
+    # Object dtype arrays (ragged trials)
+    if arr.dtype == object and arr.ndim == 1:
+        return np.asarray(arr[-1], dtype=np.float64)
+
+    if arr.ndim == 1:
+        return arr.astype(np.float64)
+    elif arr.ndim == 2:
+        return arr[-1].astype(np.float64)
+    else:
+        raise ValueError(f"Unexpected trace shape: {arr.shape}")
+
+
+def extract_last_trial_column(
+    df: pd.DataFrame,
+    col: str,
+) -> np.ndarray:
+    """
+    Extract the last trial for a single column from the DataFrame.
+
+    Args:
+        df: DataFrame with trace column.
+        col: Column name (e.g. 'iprgc_test').
+
+    Returns:
+        (n_cells, trace_length) array of last-trial traces.
+    """
+    last_trials = []
+    for i, val in enumerate(df[col].values):
+        try:
+            trace = _last_trial(val)
+            trace = np.atleast_1d(trace.flatten())
+            last_trials.append(trace)
+        except Exception as e:
+            logger.warning(f"  Cell {i} in {col} (last trial): {e}")
+            last_trials.append(np.zeros(1))
+
+    # Handle variable lengths via mode
+    lengths = np.array([t.shape[0] for t in last_trials])
+    min_len, max_len = lengths.min(), lengths.max()
+
+    if min_len != max_len:
+        mode_len = int(stats.mode(lengths, keepdims=False).mode)
+        last_trials = [
+            t[:mode_len] if len(t) >= mode_len else
+            np.pad(t, (0, mode_len - len(t)), mode='constant', constant_values=0)
+            for t in last_trials
+        ]
+
+    return np.vstack(last_trials)
+
+
 def _get_required_trace_columns() -> list[str]:
     """
     Get list of required trace columns based on config.

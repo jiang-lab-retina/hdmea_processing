@@ -15,7 +15,7 @@ import pandas as pd
 from scipy.signal import butter, sosfiltfilt
 
 from . import config
-from .data_loader import extract_trace_arrays
+from .data_loader import extract_trace_arrays, extract_last_trial_column
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +45,14 @@ def preprocess_segment(
     Notes:
         - For freq_section_10hz: no filtering, no downsampling, edge crop
         - For sta_time_course: no processing (already 60 samples)
-        - For iprgc_test: 4 Hz lowpass, 2 Hz target rate
+        - For iprgc_test: crop to 30s, 10 Hz lowpass, 10 Hz target rate
         - For others: 10 Hz lowpass, 10 Hz target rate
     """
     sampling_rate = sampling_rate if sampling_rate is not None else config.SAMPLING_RATE
     
     # Determine segment-specific processing parameters
     if segment_name == "freq_section_10hz":
-        # No filtering, no downsampling, just crop edges (first/last 1 second)
+        # No filtering, no downsampling — just crop edges (first/last 1 second)
         edge_samples = int(sampling_rate)  # 60 samples at 60 Hz
         
         if traces.shape[1] > 2 * edge_samples:
@@ -64,12 +64,16 @@ def preprocess_segment(
         return processed
     
     elif segment_name == "sta_time_course":
-        # No filtering, no downsampling for sta_time_course (keep as-is)
+        # No filtering, no downsampling — keep as-is
         logger.debug(f"  {segment_name}: no processing, shape {traces.shape}")
         return traces.copy()
     
     elif segment_name == "iprgc_test":
-        # Special handling: 4 Hz lowpass, 2 Hz target rate
+        # Crop to first 30 seconds (sustained response period) before filtering
+        crop_samples = int(30 * sampling_rate)  # 1800 at 60 Hz
+        if traces.shape[1] > crop_samples:
+            traces = traces[:, :crop_samples]
+        logger.debug(f"  {segment_name}: cropped to 30s ({traces.shape[1]} samples)")
         lowpass_cutoff = config.LOWPASS_IPRGC
         target_rate = config.TARGET_RATE_IPRGC
         
@@ -113,7 +117,7 @@ def preprocess_segment(
 
 def preprocess_all_segments(
     df: pd.DataFrame,
-) -> dict[str, np.ndarray]:
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
     """
     Preprocess all trace segments for the entire dataset.
     
@@ -121,11 +125,15 @@ def preprocess_all_segments(
         df: DataFrame with all trace columns.
     
     Returns:
-        Dict mapping segment_name to (n_cells, segment_length) arrays.
-        Keys match config.SEGMENT_NAMES.
+        Tuple of (segments, full_segments):
+        - segments: Dict of (n_cells, length) arrays for clustering.
+        - full_segments: Copy of segments for prototype plotting.
     
     Notes:
         - bar_concat is concatenation of 8 directions in fixed order
+        - freq_section_10hz and sta_time_course: no filtering, no downsampling
+        - iprgc_test: cropped to 30s, 10 Hz lowpass, 10 Hz target rate
+        - Other segments: 10 Hz lowpass, 10 Hz target rate
     """
     logger.info("Preprocessing all segments...")
     
@@ -170,17 +178,19 @@ def preprocess_all_segments(
     if rf_col in raw_traces:
         result[rf_col] = preprocess_segment(raw_traces[rf_col], rf_col)
     
-    # Process ipRGC test trace
+    # Process ipRGC test trace (last trial only — avoids averaging over adaptation)
     iprgc_col = "iprgc_test"
-    if iprgc_col in raw_traces:
-        result[iprgc_col] = preprocess_segment(raw_traces[iprgc_col], iprgc_col)
+    if iprgc_col in df.columns:
+        iprgc_raw_last = extract_last_trial_column(df, iprgc_col)
+        result[iprgc_col] = preprocess_segment(iprgc_raw_last, iprgc_col)
+        logger.info(f"  {iprgc_col}: using last trial, shape {result[iprgc_col].shape}")
     
     # Process step-up trace
     step_col = "step_up_5s_5i_b0_3x"
     if step_col in raw_traces:
         result[step_col] = preprocess_segment(raw_traces[step_col], step_col)
     
-    # Ensure numeric dtype and replace NaN with 0
+    # Ensure numeric dtype, replace NaN with 0, and normalize
     for name in result:
         # Convert to float64 to handle any object arrays
         try:
@@ -200,10 +210,105 @@ def preprocess_all_segments(
                                for x in arr.flat]).reshape(arr.shape)
             result[name] = np.nan_to_num(arr.astype(np.float64), nan=0.0)
     
+    # Normalize traces if enabled in config
+    if getattr(config, 'NORMALIZE_TRACES', True):
+        result = normalize_traces(result, method=getattr(config, 'NORMALIZE_METHOD', 'zscore'))
+    
+    # Store full-length traces for prototype plotting (same as clustering input)
+    full_segments = {name: arr.copy() for name, arr in result.items()}
+    
     # Log summary
     total_length = sum(s.shape[1] for s in result.values())
     logger.info(f"Preprocessing complete: {len(result)} segments, total length {total_length}")
     
+    return result, full_segments
+
+
+def extract_iprgc_last_trial(df: pd.DataFrame) -> np.ndarray:
+    """
+    Extract and preprocess the last trial of iprgc_test for each cell.
+
+    Used for prototype plotting: the last trial shows the sustained ipRGC
+    response without averaging over adaptation effects.
+
+    Args:
+        df: Group DataFrame containing the 'iprgc_test' column.
+
+    Returns:
+        (n_cells, trace_length) array of preprocessed last-trial iprgc traces.
+    """
+    col = "iprgc_test"
+    if col not in df.columns:
+        logger.warning(f"Column '{col}' not found in DataFrame")
+        return None
+
+    raw_last = extract_last_trial_column(df, col)
+    processed = preprocess_segment(raw_last, col)
+
+    # Clean up: float64, replace NaN
+    processed = np.asarray(processed, dtype=np.float64)
+    if np.any(np.isnan(processed)):
+        nan_count = np.isnan(processed).sum()
+        logger.warning(f"  iprgc_test_last_trial: replacing {nan_count} NaN values with 0")
+        processed = np.nan_to_num(processed, nan=0.0)
+
+    logger.info(f"  iprgc_test_last_trial: shape {processed.shape}")
+    return processed
+
+
+def normalize_traces(
+    segments: dict[str, np.ndarray],
+    method: str = "zscore",
+) -> dict[str, np.ndarray]:
+    """
+    Normalize traces to remove magnitude differences across cells.
+    
+    Args:
+        segments: Dict of segment arrays (n_cells, segment_length).
+        method: Normalization method:
+            - "zscore": Per-cell z-score (mean=0, std=1) per segment
+            - "maxabs": Divide by max absolute value per cell
+            - "minmax": Scale to [0, 1] per cell
+            - "baseline": Subtract baseline (first 10% of trace)
+    
+    Returns:
+        Dict of normalized segment arrays.
+    """
+    result = {}
+    
+    for name, arr in segments.items():
+        if method == "zscore":
+            # Z-score normalization per cell (across time)
+            mean = arr.mean(axis=1, keepdims=True)
+            std = arr.std(axis=1, keepdims=True)
+            std = np.where(std < 1e-8, 1.0, std)  # Avoid division by zero
+            result[name] = (arr - mean) / std
+            
+        elif method == "maxabs":
+            # Divide by max absolute value per cell
+            max_abs = np.abs(arr).max(axis=1, keepdims=True)
+            max_abs = np.where(max_abs < 1e-8, 1.0, max_abs)
+            result[name] = arr / max_abs
+            
+        elif method == "minmax":
+            # Scale to [0, 1] per cell
+            arr_min = arr.min(axis=1, keepdims=True)
+            arr_max = arr.max(axis=1, keepdims=True)
+            range_val = arr_max - arr_min
+            range_val = np.where(range_val < 1e-8, 1.0, range_val)
+            result[name] = (arr - arr_min) / range_val
+            
+        elif method == "baseline":
+            # Subtract baseline (first 10% of trace)
+            n_baseline = max(1, int(arr.shape[1] * 0.1))
+            baseline = arr[:, :n_baseline].mean(axis=1, keepdims=True)
+            result[name] = arr - baseline
+            
+        else:
+            logger.warning(f"Unknown normalization method: {method}, skipping")
+            result[name] = arr
+    
+    logger.info(f"Normalized traces using method='{method}'")
     return result
 
 

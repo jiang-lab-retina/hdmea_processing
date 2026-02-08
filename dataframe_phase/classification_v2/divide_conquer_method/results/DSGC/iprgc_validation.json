@@ -1,55 +1,55 @@
 {
   "group": "DSGC",
-  "baseline_prevalence": 0.16640042598509053,
+  "baseline_prevalence": 0.0,
   "initial_gmm": {
-    "purity": 0.8359957401490948,
+    "purity": 1.0,
     "top_enriched": [
       {
         "cluster": 0,
-        "n_cells": 15,
-        "n_iprgc": 9,
-        "fraction": 0.6,
-        "enrichment": 3.6057599999999996
+        "n_cells": 271,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
       },
       {
-        "cluster": 10,
-        "n_cells": 32,
-        "n_iprgc": 19,
-        "fraction": 0.59375,
-        "enrichment": 3.5682
+        "cluster": 1,
+        "n_cells": 71,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
       },
       {
-        "cluster": 3,
-        "n_cells": 47,
-        "n_iprgc": 22,
-        "fraction": 0.46808510638297873,
-        "enrichment": 2.8130042553191488
+        "cluster": 2,
+        "n_cells": 938,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
       }
     ]
   },
   "dec_refined": {
-    "purity": 0.8359957401490948,
+    "purity": 1.0,
     "top_enriched": [
       {
         "cluster": 0,
-        "n_cells": 15,
-        "n_iprgc": 9,
-        "fraction": 0.6,
-        "enrichment": 3.6057599999999996
+        "n_cells": 271,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
       },
       {
-        "cluster": 10,
-        "n_cells": 32,
-        "n_iprgc": 19,
-        "fraction": 0.59375,
-        "enrichment": 3.5682
+        "cluster": 1,
+        "n_cells": 71,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
       },
       {
-        "cluster": 3,
-        "n_cells": 47,
-        "n_iprgc": 22,
-        "fraction": 0.46808510638297873,
-        "enrichment": 2.8130042553191488
+        "cluster": 2,
+        "n_cells": 938,
+        "n_iprgc": 0,
+        "fraction": 0.0,
+        "enrichment": 0.0
       }
     ]
   }

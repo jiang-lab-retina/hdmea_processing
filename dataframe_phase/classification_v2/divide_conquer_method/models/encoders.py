@@ -1,15 +1,21 @@
 """
 Segment encoders for the multi-segment autoencoder.
 
-Each encoder is a 1D CNN that compresses a single trace segment
-into a fixed-size latent vector.
+Each encoder compresses a single trace segment into a fixed-size latent vector.
+Supports multiple encoder types: TCN (default), CNN, MultiScale.
 """
 
 import torch
 import torch.nn as nn
 
+# Import TCN encoders - handle both package and direct import
+try:
+    from .tcn_encoder import TCNEncoder, MultiScaleEncoder
+except ImportError:
+    from tcn_encoder import TCNEncoder, MultiScaleEncoder
 
-class SegmentEncoder(nn.Module):
+
+class SegmentEncoderCNN(nn.Module):
     """
     1D CNN encoder for a single trace segment.
     
@@ -152,24 +158,55 @@ class SegmentEncoderMLP(nn.Module):
 def create_encoder(
     input_length: int,
     latent_dim: int,
+    encoder_type: str = "tcn",
     hidden_dims: list[int] | None = None,
     dropout: float = 0.1,
-    use_mlp_threshold: int = 20,
+    use_mlp_threshold: int = 30,
+    tcn_channels: list[int] | None = None,
+    tcn_kernel_size: int = 3,
+    multiscale_kernel_sizes: list[int] | None = None,
+    multiscale_channels: int = 32,
 ) -> nn.Module:
     """
-    Factory function to create appropriate encoder based on input length.
+    Factory function to create appropriate encoder based on type and input length.
     
     Args:
         input_length: Length of input trace.
         latent_dim: Output embedding dimension.
-        hidden_dims: Hidden layer dimensions.
+        encoder_type: "tcn" (default), "cnn", or "multiscale".
+        hidden_dims: Hidden layer dimensions (for CNN).
         dropout: Dropout probability.
         use_mlp_threshold: Use MLP for segments shorter than this.
+        tcn_channels: Channel dimensions for TCN blocks.
+        tcn_kernel_size: Kernel size for TCN.
+        multiscale_kernel_sizes: Kernel sizes for multi-scale branches.
+        multiscale_channels: Channels per branch for multi-scale.
     
     Returns:
         Encoder module.
     """
+    # Use MLP for very short segments regardless of encoder_type
     if input_length < use_mlp_threshold:
         return SegmentEncoderMLP(input_length, latent_dim, hidden_dims, dropout)
+    
+    # Select encoder based on type
+    if encoder_type == "tcn":
+        return TCNEncoder(
+            input_length=input_length,
+            latent_dim=latent_dim,
+            num_channels=tcn_channels,
+            kernel_size=tcn_kernel_size,
+            dropout=dropout,
+        )
+    elif encoder_type == "multiscale":
+        return MultiScaleEncoder(
+            input_length=input_length,
+            latent_dim=latent_dim,
+            branch_channels=multiscale_channels,
+            kernel_sizes=multiscale_kernel_sizes,
+            dropout=dropout,
+        )
+    elif encoder_type == "cnn":
+        return SegmentEncoderCNN(input_length, latent_dim, hidden_dims, dropout)
     else:
-        return SegmentEncoder(input_length, latent_dim, hidden_dims, dropout)
+        raise ValueError(f"Unknown encoder type: {encoder_type}. Use 'tcn', 'cnn', or 'multiscale'.")

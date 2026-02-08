@@ -18,24 +18,59 @@ import numpy as np
 import pandas as pd
 
 # Support both direct execution and module execution
-if __name__ == "__main__" and __package__ is None:
-    # Running directly: add parent to path
-    _this_dir = Path(__file__).resolve().parent
-    _parent_dir = _this_dir.parent
+_this_dir = Path(__file__).resolve().parent
+_parent_dir = _this_dir.parent
+
+if __name__ == "__main__":
+    # Running directly or as module: ensure parent is in path
     if str(_parent_dir) not in sys.path:
         sys.path.insert(0, str(_parent_dir))
-    __package__ = "divide_conquer_method"
 
-from divide_conquer_method import config
-from divide_conquer_method.data_loader import load_and_filter_data
-from divide_conquer_method.grouping import assign_groups, filter_group, get_group_stats
-from divide_conquer_method.preprocessing import preprocess_all_segments, get_segment_lengths
-from divide_conquer_method.train import train_autoencoder, load_model
-from divide_conquer_method.embed import extract_embeddings, standardize_embeddings
-from divide_conquer_method.clustering.gmm_bic import fit_gmm_bic, select_k_min_bic, save_k_selection, load_gmm_results
-from divide_conquer_method.clustering.dec_refine import refine_with_dec, load_dec_results
-from divide_conquer_method.validation.iprgc_metrics import compute_iprgc_metrics, get_iprgc_labels
-from divide_conquer_method import evaluation
+# Use try/except for imports to support both execution modes
+try:
+    from . import config
+    from .data_loader import load_and_filter_data
+    from .grouping import assign_groups, filter_group, get_group_stats
+    from .preprocessing import preprocess_all_segments, get_segment_lengths, extract_iprgc_last_trial
+    from .train import train_autoencoder, load_model
+    from .embed import extract_embeddings, standardize_embeddings
+    from .clustering.gmm_bic import fit_gmm_bic, select_k_min_bic, save_k_selection, load_gmm_results
+    from .clustering.dec_refine import refine_with_dec, load_dec_results
+    from .validation.iprgc_metrics import compute_iprgc_metrics, get_iprgc_labels
+    from .validation.mosaic_validation import (
+        validate_dataframe,
+        calculate_total_area,
+        calculate_conversion_factor,
+        calculate_subtype_coverage,
+        calculate_rf_areas_for_cells,
+        plot_rf_coverage_bar_chart,
+        plot_validation_heatmap,
+        CRITICAL_COLUMNS,
+        RF_COVERAGE_THRESHOLD,
+    )
+    from . import evaluation
+except ImportError:
+    from divide_conquer_method import config
+    from divide_conquer_method.data_loader import load_and_filter_data
+    from divide_conquer_method.grouping import assign_groups, filter_group, get_group_stats
+    from divide_conquer_method.preprocessing import preprocess_all_segments, get_segment_lengths, extract_iprgc_last_trial
+    from divide_conquer_method.train import train_autoencoder, load_model
+    from divide_conquer_method.embed import extract_embeddings, standardize_embeddings
+    from divide_conquer_method.clustering.gmm_bic import fit_gmm_bic, select_k_min_bic, save_k_selection, load_gmm_results
+    from divide_conquer_method.clustering.dec_refine import refine_with_dec, load_dec_results
+    from divide_conquer_method.validation.iprgc_metrics import compute_iprgc_metrics, get_iprgc_labels
+    from divide_conquer_method.validation.mosaic_validation import (
+        validate_dataframe,
+        calculate_total_area,
+        calculate_conversion_factor,
+        calculate_subtype_coverage,
+        calculate_rf_areas_for_cells,
+        plot_rf_coverage_bar_chart,
+        plot_validation_heatmap,
+        CRITICAL_COLUMNS,
+        RF_COVERAGE_THRESHOLD,
+    )
+    from divide_conquer_method import evaluation
 
 # Setup logging
 logging.basicConfig(
@@ -54,6 +89,7 @@ def main(
     skip_gmm: bool = False,
     skip_dec: bool = False,
     skip_plots: bool = False,
+    skip_mosaic: bool = False,
     visualize_only: bool = False,
     subset_n: int | None = None,
 ) -> dict:
@@ -69,6 +105,7 @@ def main(
         skip_gmm: Load cached k* instead of running GMM/BIC.
         skip_dec: Skip DEC refinement (GMM-only).
         skip_plots: Skip plot generation.
+        skip_mosaic: Skip mosaic validation step.
         visualize_only: Only generate plots from saved artifacts.
         subset_n: Use subset of N cells for testing.
     
@@ -160,6 +197,43 @@ def main(
         if valid_results:
             evaluation.generate_consolidated_report(valid_results, config.RESULTS_DIR)
     
+    # Mosaic validation (requires cluster assignments from all processed groups)
+    mosaic_results = None
+    if not skip_mosaic:
+        valid_groups = [g for g in groups if 'error' not in all_results.get(g, {'error': ''})]
+        if valid_groups:
+            mosaic_results = _run_mosaic_validation(
+                df=df,
+                groups=valid_groups,
+                results_dir=config.RESULTS_DIR,
+                skip_plots=skip_plots,
+            )
+            # Attach mosaic results to per-group results
+            if mosaic_results is not None:
+                for grp in valid_groups:
+                    grp_mosaic = mosaic_results[mosaic_results['group'] == grp]
+                    if len(grp_mosaic) > 0 and grp in all_results:
+                        n_valid = int(grp_mosaic['mosaic_validation'].sum())
+                        n_total = len(grp_mosaic)
+                        all_results[grp]['mosaic_valid'] = n_valid
+                        all_results[grp]['mosaic_total'] = n_total
+        else:
+            logger.warning("Skipping mosaic validation: no groups completed successfully")
+    else:
+        logger.info("Skipping mosaic validation (--skip-mosaic)")
+    
+    # Save labeled DataFrame with subtype + valid_mosaic columns
+    valid_groups = [g for g in groups if 'error' not in all_results.get(g, {'error': ''})]
+    if valid_groups:
+        labeled_path = config.RESULTS_DIR / "labeled_dataframe.parquet"
+        evaluation.save_labeled_dataframe(
+            df=df,
+            groups=valid_groups,
+            results_dir=config.RESULTS_DIR,
+            mosaic_results=mosaic_results,
+            output_path=labeled_path,
+        )
+    
     # Final summary
     duration = time.time() - start_time
     
@@ -173,8 +247,151 @@ def main(
         'output_dir': str(output_dir),
         'groups_processed': groups,
         'per_group': all_results,
+        'mosaic_validation': mosaic_results.to_dict('records') if mosaic_results is not None else None,
         'duration_seconds': duration,
     }
+
+
+def _run_mosaic_validation(
+    df: pd.DataFrame,
+    groups: list,
+    results_dir: Path,
+    skip_plots: bool = False,
+) -> Optional[pd.DataFrame]:
+    """
+    Run mosaic validation on the already-loaded DataFrame.
+    
+    Uses the cluster assignments saved during group processing to compute
+    RF coverage for each subtype. Avoids redundant data loading by reusing
+    the DataFrame already in memory.
+    
+    Args:
+        df: Full filtered DataFrame with group assignments (from Step 1-2).
+        groups: List of group names that were successfully processed.
+        results_dir: Directory containing per-group cluster_assignments.parquet.
+        skip_plots: Skip plot generation.
+        
+    Returns:
+        DataFrame with mosaic validation results, or None if validation failed.
+    """
+    logger.info("=" * 60)
+    logger.info("Step 9: Mosaic Validation")
+    logger.info("=" * 60)
+    
+    validation_dir = Path(__file__).resolve().parent / "validation"
+    output_results_dir = validation_dir / "result"
+    output_figures_dir = validation_dir / "figure"
+    output_results_dir.mkdir(parents=True, exist_ok=True)
+    output_figures_dir.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Step 9a: Validate DataFrame for NaN values
+        logger.info("-" * 40)
+        logger.info("Step 9a: Validating DataFrame for NaN values")
+        valid_df, nan_report = validate_dataframe(df, CRITICAL_COLUMNS)
+        
+        nan_report_path = output_results_dir / "nan_validation_report.csv"
+        nan_report.to_csv(nan_report_path, index=False)
+        logger.info(f"  Saved NaN report to: {nan_report_path}")
+        
+        # Build group mappings from the validated DataFrame
+        group_mappings = {}
+        for group_name in groups:
+            group_df = valid_df[valid_df['group'] == group_name]
+            mapping = pd.DataFrame({
+                'cell_id': range(len(group_df)),
+                'original_index': group_df.index.values,
+            })
+            group_mappings[group_name] = mapping
+            logger.info(f"  {group_name}: {len(mapping)} cells (validated)")
+        
+        # Step 9b: Calculate total area
+        logger.info("-" * 40)
+        logger.info("Step 9b: Calculating total area")
+        total_area_px2, total_area_mm2, batch_areas = calculate_total_area(valid_df)
+        
+        # Step 9c: Calculate conversion factor
+        logger.info("-" * 40)
+        logger.info("Step 9c: Calculating conversion factor")
+        conversion_factor, total_good_cell_count = calculate_conversion_factor(
+            valid_df, total_area_mm2
+        )
+        
+        # Step 9d: Calculate RF coverage per subtype
+        logger.info("-" * 40)
+        logger.info("Step 9d: Calculating RF coverage per subtype")
+        
+        all_group_results = []
+        
+        for group_name in groups:
+            cluster_path = results_dir / group_name / "cluster_assignments.parquet"
+            
+            if not cluster_path.exists():
+                logger.warning(f"  Cluster assignments not found: {cluster_path}")
+                continue
+            
+            cluster_assignments = pd.read_parquet(cluster_path)
+            index_mapping = group_mappings[group_name]
+            
+            group_results = calculate_subtype_coverage(
+                df=valid_df,
+                cluster_assignments=cluster_assignments,
+                index_mapping=index_mapping,
+                group_name=group_name,
+                conversion_factor=conversion_factor,
+                total_area_mm2=total_area_mm2,
+            )
+            
+            all_group_results.append(group_results)
+            
+            n_valid = group_results['mosaic_validation'].sum()
+            n_total = len(group_results)
+            logger.info(f"  {group_name}: {n_valid}/{n_total} subtypes pass validation")
+        
+        if not all_group_results:
+            logger.warning("No mosaic validation results produced")
+            return None
+        
+        results_df = pd.concat(all_group_results, ignore_index=True)
+        
+        # Save results
+        logger.info("-" * 40)
+        logger.info("Step 9e: Saving mosaic validation results")
+        
+        parquet_path = output_results_dir / "mosaic_validation_results.parquet"
+        results_df.to_parquet(parquet_path, index=False)
+        logger.info(f"  Saved: {parquet_path}")
+        
+        csv_path = output_results_dir / "mosaic_summary.csv"
+        results_df.to_csv(csv_path, index=False)
+        logger.info(f"  Saved: {csv_path}")
+        
+        # Generate plots
+        if not skip_plots:
+            logger.info("-" * 40)
+            logger.info("Step 9f: Generating mosaic validation plots")
+            
+            plot_rf_coverage_bar_chart(
+                results_df,
+                output_figures_dir / "rf_coverage_by_subtype.png"
+            )
+            
+            plot_validation_heatmap(
+                results_df,
+                output_figures_dir / "validation_heatmap.png"
+            )
+        
+        # Log summary
+        total_valid = results_df['mosaic_validation'].sum()
+        total_subtypes = len(results_df)
+        logger.info(f"  Mosaic validation: {total_valid}/{total_subtypes} subtypes pass "
+                     f"(threshold = {RF_COVERAGE_THRESHOLD})")
+        
+        return results_df
+    
+    except Exception as e:
+        logger.error(f"Mosaic validation failed: {e}", exc_info=True)
+        return None
 
 
 def _process_single_group(
@@ -211,8 +428,15 @@ def _process_single_group(
     logger.info("-" * 40)
     logger.info("Step 3: Preprocessing traces")
     
-    segments = preprocess_all_segments(group_df)
+    segments, full_segments = preprocess_all_segments(group_df)
+    
     segment_lengths = get_segment_lengths(segments)
+    
+    # Extract last-trial iprgc_test for prototype plots
+    iprgc_last_trial = extract_iprgc_last_trial(group_df)
+    
+    # Extract ipRGC labels for validation metrics
+    iprgc_labels = get_iprgc_labels(group_df)
     
     # Step 2: Train or load autoencoder
     logger.info("-" * 40)
@@ -267,9 +491,7 @@ def _process_single_group(
     gmm_labels = gmm_model.predict(embeddings_std)
     gmm_posteriors = gmm_model.predict_proba(embeddings_std).max(axis=1)
     
-    # Step 5: ipRGC labels for validation
-    iprgc_labels = get_iprgc_labels(group_df)
-    
+    # ipRGC labels already extracted above (before AE training)
     # Compute GMM metrics
     gmm_metrics = compute_iprgc_metrics(gmm_labels, iprgc_labels)
     logger.info(f"GMM purity: {gmm_metrics['purity']:.3f}")
@@ -288,13 +510,23 @@ def _process_single_group(
         logger.info("-" * 40)
         logger.info("Step 7: DEC refinement")
         
-        dec_labels, dec_embeddings, dec_history = refine_with_dec(
+        dec_labels_raw, dec_embeddings, dec_history = refine_with_dec(
             model=model,
             segments=segments,
             initial_centers=gmm_model.means_,
             k=k_selected,
+            scaler_params=scaler_params,
             checkpoint_dir=models_dir,
         )
+        
+        # Check if reassignment is allowed
+        allow_reassignment = getattr(config, 'DEC_ALLOW_REASSIGNMENT', True)
+        if allow_reassignment:
+            dec_labels = dec_labels_raw
+            logger.info("DEC reassignment enabled: using DEC labels")
+        else:
+            dec_labels = gmm_labels.copy()
+            logger.info("DEC reassignment disabled: keeping GMM labels, only embeddings refined")
         
         # Compute DEC soft assignments for saving
         # For now, use 1.0 as placeholder (actual soft assignments are in IDEC)
@@ -342,6 +574,8 @@ def _process_single_group(
             'gmm_metrics': gmm_metrics,
             'dec_metrics': dec_metrics,
             'segments': segments,
+            'full_segments': full_segments,
+            'iprgc_last_trial': iprgc_last_trial,
         }
         
         visualization.generate_all_plots(artifacts, group, plots_dir)
@@ -379,7 +613,7 @@ def parse_args():
     parser.add_argument(
         "--group",
         type=str,
-        choices=["DSGC", "OSGC", "Other"],
+        choices=["ipRGC", "DSGC", "OSGC", "Other"],
         default=None,
         help="Group to process"
     )
@@ -406,13 +640,26 @@ def parse_args():
     parser.add_argument(
         "--skip-dec",
         action="store_true",
-        help="Skip DEC refinement"
+        default=True,
+        help="Skip DEC refinement (default: True)"
+    )
+    
+    parser.add_argument(
+        "--run-dec",
+        action="store_true",
+        help="Run DEC refinement (overrides --skip-dec default)"
     )
     
     parser.add_argument(
         "--skip-plots",
         action="store_true",
         help="Skip plot generation"
+    )
+    
+    parser.add_argument(
+        "--skip-mosaic",
+        action="store_true",
+        help="Skip mosaic validation step"
     )
     
     parser.add_argument(
@@ -451,8 +698,9 @@ if __name__ == "__main__":
             all_groups=args.all_groups,
             skip_training=args.skip_training,
             skip_gmm=args.skip_gmm,
-            skip_dec=args.skip_dec,
+            skip_dec=args.skip_dec and not getattr(args, 'run_dec', False),
             skip_plots=args.skip_plots,
+            skip_mosaic=args.skip_mosaic,
             visualize_only=args.visualize_only,
             subset_n=args.subset,
         )
@@ -471,6 +719,20 @@ if __name__ == "__main__":
                 print(f"  k*: {group_results['k_selected']}")
                 print(f"  GMM purity: {group_results['gmm_metrics']['purity']:.3f}")
                 print(f"  DEC purity: {group_results['dec_metrics']['purity']:.3f}")
+                if 'mosaic_valid' in group_results:
+                    mv = group_results['mosaic_valid']
+                    mt = group_results['mosaic_total']
+                    print(f"  Mosaic: {mv}/{mt} subtypes pass")
+        
+        # Print mosaic summary
+        if results.get('mosaic_validation'):
+            print("\n" + "-" * 40)
+            print("Mosaic Validation Summary")
+            print("-" * 40)
+            mosaic = results['mosaic_validation']
+            n_pass = sum(1 for r in mosaic if r['mosaic_validation'])
+            n_total = len(mosaic)
+            print(f"  Total: {n_pass}/{n_total} subtypes pass (threshold = {RF_COVERAGE_THRESHOLD})")
         
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)
