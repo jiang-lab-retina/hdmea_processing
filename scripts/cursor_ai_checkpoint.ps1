@@ -22,10 +22,10 @@ if (-not $repoRoot) {
 Set-Location $repoRoot
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$stashMessage = "cursor-ai-checkpoint:$timestamp:$Message"
+$stashMessage = "cursor-ai-checkpoint:${timestamp}:${Message}"
 
-$status = git status --porcelain
-$hasChanges = ($status -and $status.Count -gt 0)
+$statusLines = @(git status --porcelain)
+$hasChanges = ($statusLines.Count -gt 0)
 
 $checkpointDir = Join-Path $repoRoot ".cursor"
 if (-not (Test-Path $checkpointDir)) {

@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "checkpointMessage",
+      "type": "promptString",
+      "description": "Checkpoint message (saved in .cursor/ai_checkpoint.json and git stash)",
+      "default": "pre-ai-edit"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "Cursor AI: Checkpoint (git stash)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\\\scripts\\\\cursor_ai_checkpoint.ps1",
+        "-Message",
+        "${input:checkpointMessage}"
+      ],
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Cursor AI: Restore (undo agent edits)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\\\scripts\\\\cursor_ai_restore.ps1"
+      ],
+      "problemMatcher": [],
+      "group": "test"
+    }
+  ]
+}
