@@ -25,7 +25,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\\\scripts\\\\cursor_ai_checkpoint.ps1",
+        "${workspaceFolder}\\scripts\\cursor_ai_checkpoint.ps1",
         "-Message",
         "${input:checkpointMessage}"
       ],
@@ -45,7 +45,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\\\scripts\\\\cursor_ai_restore.ps1"
+        "${workspaceFolder}\\scripts\\cursor_ai_restore.ps1"
       ],
       "problemMatcher": [],
       "group": "test"
@@ -60,7 +60,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\\\scripts\\\\cursor_ai_restore.ps1",
+        "${workspaceFolder}\\scripts\\cursor_ai_restore.ps1",
         "-Id",
         "${input:checkpointId}"
       ],
@@ -76,7 +76,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\\\scripts\\\\cursor_ai_restore.ps1",
+        "${workspaceFolder}\\scripts\\cursor_ai_restore.ps1",
         "-List"
       ],
       "problemMatcher": [],

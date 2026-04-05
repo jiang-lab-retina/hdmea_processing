@@ -1,0 +1,15 @@
+{
+    "name": "stu48_final",
+    "display_name": "Natural Scene - Stu48",
+    "section_kwargs": {
+        "start_frame": 0,
+        "trial_length_frame": 12100,
+        "repeat": 1
+    },
+    "analysis_windows": {
+        "sta_frames_before": 10,
+        "sta_frames_after": 5
+    },
+    "description": "Natural scene movie (stu48). 500x500 at 15Hz, 12100 frames. Played 3x interleaved in play_natural_scene_movie_v1 playlist.",
+    "note": "repeat is 1 because repeats are interleaved with other movies; section_time stores 3 non-contiguous rows per movie."
+}
