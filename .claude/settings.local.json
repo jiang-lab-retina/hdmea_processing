@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash \"C:/Users/jianglab/.claude/statusline-command.sh\")",
+      "Bash(ls -t \"C:/Users/jianglab/.claude/projects/\"*/*.jsonl)"
+    ]
+  }
+}

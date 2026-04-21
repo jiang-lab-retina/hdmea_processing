@@ -1386,6 +1386,512 @@ def plot_three_trace_overlay(
 
 
 # ---------------------------------------------------------------------------
+# Panels U / V -- individual trace subplots with pre-t=0 baseline
+# ---------------------------------------------------------------------------
+
+LA_SWITCH_TRIAL = 83  # trial index where low glucose starts in concatenated low_alone array
+
+def plot_individual_trace_subplots(
+    axes: np.ndarray,
+    units_sr: List[np.ndarray],
+    cell_label: str,
+    low_alone_features: np.ndarray,
+    hg_combined_features: np.ndarray,
+    custom_labels: Optional[Dict[str, str]] = None,
+    step: int = 2,
+    pre_window_trials: int = 15,
+):
+    """Four vertically stacked subplots: red alone, blue alone, green alone,
+    combined overlay. Each shows 2.5 min before t=0 (glucose OFF) plus the
+    full post-t=0 period. Background shading indicates glucose condition."""
+
+    pre_s = pre_window_trials * TRIAL_INTERVAL_S
+
+    # -- 1. Treatment trace (red) --
+    tc = compute_population_timecourse(units_sr)
+    treat_x_abs = tc["x_s"]
+    treat_mean = tc["mean"]
+    treat_sem = tc["sem"]
+    treat_arr = tc["arr"]
+    n_treat = tc["n_units"]
+    treat_x_rel = treat_x_abs - LOW_GLUCOSE_S
+    treat_end_rel = treat_x_rel[-1]
+
+    red_start_trial = LOW_GLUCOSE_TRIAL_START - pre_window_trials
+    red_idx_all = np.arange(max(0, red_start_trial), len(treat_mean))
+    red_x = treat_x_rel[red_idx_all]
+    red_mean = treat_mean[red_idx_all]
+    red_sem = treat_sem[red_idx_all]
+
+    # -- 2. Low glucose alone trace (blue) --
+    la_pop_mean = np.nanmean(low_alone_features, axis=0)
+    la_baseline = np.nanmean(la_pop_mean[:BASELINE_WINDOW])
+    if la_baseline > 0:
+        la_norm = low_alone_features / la_baseline
+    else:
+        la_norm = low_alone_features.copy()
+    n_valid_la = np.sum(~np.isnan(la_norm), axis=0)
+    la_mean_full = np.nanmean(la_norm, axis=0)
+    la_sem_full = np.nanstd(la_norm, axis=0) / np.sqrt(np.maximum(n_valid_la, 1))
+    n_la = la_norm.shape[0]
+
+    blue_end_trial = min(la_norm.shape[1],
+                         int(treat_end_rel / TRIAL_INTERVAL_S) + 1)
+    blue_idx_all = np.arange(0, blue_end_trial)
+    blue_x = blue_idx_all * TRIAL_INTERVAL_S
+    blue_mean = la_mean_full[blue_idx_all]
+    blue_sem = la_sem_full[blue_idx_all]
+
+    # -- 3. HG-alone trace (green) --
+    n_units_hg, n_trials_hg = hg_combined_features.shape
+    baseline_start_hg = max(0, HG_ON_TRIAL - BASELINE_WINDOW)
+    hg_pop_raw = np.nanmean(hg_combined_features, axis=0)
+    hg_baseline = np.nanmean(hg_pop_raw[baseline_start_hg:HG_ON_TRIAL])
+    if hg_baseline > 0:
+        hg_arr = hg_combined_features / hg_baseline
+    else:
+        hg_arr = hg_combined_features.copy()
+    hg_mean_all = np.nanmean(hg_arr, axis=0)
+    hg_sem_all = np.nanstd(hg_arr, axis=0) / np.sqrt(
+        np.maximum(np.sum(~np.isnan(hg_arr), axis=0), 1))
+
+    green_start_trial = MAJORITY_HG_OFF_TRIAL - pre_window_trials
+    green_end_trial = min(n_trials_hg,
+                          MAJORITY_HG_OFF_TRIAL + int(treat_end_rel / TRIAL_INTERVAL_S) + 1)
+    green_idx_all = np.arange(max(0, green_start_trial), green_end_trial)
+    green_x = (green_idx_all - MAJORITY_HG_OFF_TRIAL) * TRIAL_INTERVAL_S
+    green_mean = hg_mean_all[green_idx_all]
+    green_sem = hg_sem_all[green_idx_all]
+
+    # -- Align blue/green to red at t=0 --
+    treat_val_t0 = treat_mean[LOW_GLUCOSE_TRIAL_START] if LOW_GLUCOSE_TRIAL_START < len(treat_mean) else 1.0
+
+    la_val_t0 = la_mean_full[0] if len(la_mean_full) > 0 else 1.0
+    la_scale = 1.0
+    if la_val_t0 > 0:
+        la_scale = treat_val_t0 / la_val_t0
+        blue_mean = blue_mean * la_scale
+        blue_sem = blue_sem * la_scale
+        la_norm = la_norm * la_scale
+
+    hg_val_t0 = hg_mean_all[MAJORITY_HG_OFF_TRIAL] if MAJORITY_HG_OFF_TRIAL < len(hg_mean_all) else 1.0
+    hg_scale = 1.0
+    if hg_val_t0 > 0:
+        hg_scale = treat_val_t0 / hg_val_t0
+        green_mean = green_mean * hg_scale
+        green_sem = green_sem * hg_scale
+        hg_arr = hg_arr * hg_scale
+
+    # -- Labels --
+    _cl = custom_labels or {}
+    lbl_red = _cl.get("red", f"High to low glucose (n={n_treat})")
+    lbl_blue = _cl.get("blue", f"Normal to low glucose (n={n_la})")
+    lbl_green = _cl.get("green", f"High to normal glucose (n={n_units_hg})")
+    for placeholder, val in [("{n}", str(n_treat))]:
+        lbl_red = lbl_red.replace(placeholder, val)
+    lbl_blue = lbl_blue.replace("{n}", str(n_la))
+    lbl_green = lbl_green.replace("{n}", str(n_units_hg))
+
+    x_lo = -pre_s - 10
+    x_hi = treat_end_rel + 10
+
+    def _shade_and_line(ax, pre_condition, post_condition):
+        if pre_condition == "high":
+            ax.axvspan(x_lo, 0, color="red", alpha=0.06, zorder=0)
+        if post_condition == "low":
+            ax.axvspan(0, x_hi, color="blue", alpha=0.06, zorder=0)
+        ax.axvline(0, color="gray", ls="--", lw=1, alpha=0.7)
+
+    def _format_ax(ax, show_xlabel=False):
+        ax.set_ylim(0.4, 1.1)
+        ax.set_xlim(x_lo, x_hi)
+        if show_xlabel:
+            ax.set_xlabel("Time relative to glucose OFF (s)", fontsize=10)
+        ax.set_ylabel("Norm. Resp.", fontsize=9)
+        ax.tick_params(labelsize=8)
+        ax.grid(True, alpha=0.15)
+        ax.legend(fontsize=8, loc="best", framealpha=0.8)
+
+    # -- Subplot 0: Red trace alone --
+    ax0 = axes[0]
+    _shade_and_line(ax0, "high", "low")
+    r_idx = np.arange(0, len(red_mean), step)
+    ax0.errorbar(red_x[r_idx], red_mean[r_idx], yerr=red_sem[r_idx],
+                 fmt="o-", capsize=2, color="red", markersize=2, lw=1,
+                 label=lbl_red)
+    ax0.set_title(cell_label, fontsize=11, fontweight="bold")
+    _format_ax(ax0)
+
+    # -- Subplot 1: Blue trace alone --
+    ax1 = axes[1]
+    _shade_and_line(ax1, "normal", "low")
+    b_idx = np.arange(0, len(blue_mean), step)
+    ax1.errorbar(blue_x[b_idx], blue_mean[b_idx], yerr=blue_sem[b_idx],
+                 fmt="s-", capsize=2, color="blue", markersize=2, lw=1,
+                 label=lbl_blue)
+    _format_ax(ax1)
+
+    # -- Subplot 2: Green trace alone --
+    ax2 = axes[2]
+    _shade_and_line(ax2, "high", "normal")
+    g_idx = np.arange(0, len(green_mean), step)
+    ax2.errorbar(green_x[g_idx], green_mean[g_idx], yerr=green_sem[g_idx],
+                 fmt="^-", capsize=2, color="green", markersize=2, lw=1,
+                 label=lbl_green)
+    _format_ax(ax2)
+
+    # -- Subplot 3: Combined overlay with t-test --
+    ax3 = axes[3]
+    _shade_and_line(ax3, "high", "low")
+    ax3.errorbar(red_x[r_idx], red_mean[r_idx], yerr=red_sem[r_idx],
+                 fmt="o-", capsize=2, color="red", markersize=2, lw=1,
+                 label=lbl_red)
+    ax3.errorbar(blue_x[b_idx], blue_mean[b_idx], yerr=blue_sem[b_idx],
+                 fmt="s-", capsize=2, color="blue", markersize=2, lw=1,
+                 label=lbl_blue)
+    ax3.errorbar(green_x[g_idx], green_mean[g_idx], yerr=green_sem[g_idx],
+                 fmt="^-", capsize=2, color="green", markersize=2, lw=1,
+                 label=lbl_green)
+
+    n_treat_trials = treat_arr.shape[1]
+    for bi in b_idx:
+        t_rel = blue_x[bi]
+        if t_rel < 0:
+            continue
+        treat_trial = LOW_GLUCOSE_TRIAL_START + int(round(t_rel / TRIAL_INTERVAL_S))
+        la_trial = blue_idx_all[bi]
+        if treat_trial >= n_treat_trials or la_trial >= la_norm.shape[1]:
+            continue
+        t_vals = treat_arr[:, treat_trial]
+        la_col = la_norm[:, la_trial]
+        la_valid = la_col[~np.isnan(la_col)]
+        if len(la_valid) > 1 and len(t_vals) > 1:
+            _, p = ttest_ind(la_valid, t_vals, equal_var=False)
+            if p < 0.05:
+                y_star = blue_mean[bi] + blue_sem[bi] + 0.01
+                ax3.text(blue_x[bi], y_star, "*", ha="center", va="bottom",
+                         fontsize=8, color="blue", fontweight="bold")
+
+    for gi in g_idx:
+        t_rel = green_x[gi]
+        if t_rel < 0:
+            continue
+        treat_trial = LOW_GLUCOSE_TRIAL_START + int(round(t_rel / TRIAL_INTERVAL_S))
+        hg_trial = green_idx_all[gi]
+        if treat_trial >= n_treat_trials or hg_trial >= hg_arr.shape[1]:
+            continue
+        t_vals = treat_arr[:, treat_trial]
+        hg_col = hg_arr[:, hg_trial]
+        hg_valid = hg_col[~np.isnan(hg_col)]
+        if len(hg_valid) > 1 and len(t_vals) > 1:
+            _, p = ttest_ind(hg_valid, t_vals, equal_var=False)
+            if p < 0.05:
+                y_star = green_mean[gi] + green_sem[gi] + 0.01
+                ax3.text(green_x[gi], y_star, "*", ha="center", va="bottom",
+                         fontsize=8, color="green", fontweight="bold")
+
+    _format_ax(ax3, show_xlabel=True)
+
+
+# ---------------------------------------------------------------------------
+# Panels U2 / V2 -- individual traces with protocol diagram + 3 pre-t=0 blue
+# ---------------------------------------------------------------------------
+
+def _draw_protocol_diagram(ax, x_lo, x_hi):
+    """Draw protocol timelines for red and blue traces in a dedicated axis."""
+    ax.set_xlim(x_lo, x_hi)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+    bar_h = 0.18
+    arrow_kw = dict(arrowstyle="-|>", color="steelblue", lw=1.5)
+
+    # Red trace protocol
+    red_y = 0.72
+    ax.text(x_lo + 5, red_y + bar_h / 2, "Red", fontsize=8, color="red",
+            fontweight="bold", va="center")
+    lbl_x = x_lo + 35
+    hg_on = HIGH_GLUCOSE_S - LOW_GLUCOSE_S
+    hg_off = 0
+    rec_end = x_hi - 10
+
+    ax.barh(red_y, hg_on - (x_lo + 50), height=bar_h, left=x_lo + 50,
+            color="#c8e6ff", edgecolor="gray", lw=0.5, zorder=2)
+    ax.barh(red_y, hg_off - hg_on, height=bar_h, left=hg_on,
+            color="#ffc8c8", edgecolor="gray", lw=0.5, zorder=2)
+    ax.barh(red_y, rec_end - hg_off, height=bar_h, left=hg_off,
+            color="#c8c8ff", edgecolor="gray", lw=0.5, zorder=2)
+    ax.annotate("", xy=(rec_end, red_y + bar_h / 2),
+                xytext=(rec_end - 5, red_y + bar_h / 2), arrowprops=arrow_kw)
+
+    ax.text((x_lo + 50 + hg_on) / 2, red_y + bar_h / 2, "5 mM",
+            ha="center", va="center", fontsize=7)
+    ax.text((hg_on + hg_off) / 2, red_y + bar_h / 2, "25 mM",
+            ha="center", va="center", fontsize=7, color="darkred")
+    ax.text((hg_off + rec_end) / 2, red_y + bar_h / 2, "2 mM",
+            ha="center", va="center", fontsize=7, color="darkblue")
+
+    hg_on_min = (HIGH_GLUCOSE_S - LOW_GLUCOSE_S) / 60 + LOW_GLUCOSE_S / 60
+    ax.axvline(hg_on, ymin=0.05, ymax=0.95, color="gray", ls=":", lw=0.8, alpha=0.5)
+    ax.axvline(hg_off, ymin=0.05, ymax=0.95, color="gray", ls=":", lw=0.8, alpha=0.5)
+
+    top_y = red_y + bar_h + 0.03
+    ax.text(hg_on, top_y, "2.5 min", ha="center", fontsize=6, color="gray")
+    ax.text(hg_off, top_y, "15 min", ha="center", fontsize=6, color="gray")
+
+    # Blue trace protocol
+    blue_y = 0.25
+    ax.text(x_lo + 5, blue_y + bar_h / 2, "Blue", fontsize=8, color="blue",
+            fontweight="bold", va="center")
+    ax.barh(blue_y, hg_off - (x_lo + 50), height=bar_h, left=x_lo + 50,
+            color="#c8e6ff", edgecolor="gray", lw=0.5, zorder=2)
+    ax.barh(blue_y, rec_end - hg_off, height=bar_h, left=hg_off,
+            color="#c8c8ff", edgecolor="gray", lw=0.5, zorder=2)
+    ax.annotate("", xy=(rec_end, blue_y + bar_h / 2),
+                xytext=(rec_end - 5, blue_y + bar_h / 2), arrowprops=arrow_kw)
+
+    ax.text((x_lo + 50 + hg_off) / 2, blue_y + bar_h / 2, "5 mM",
+            ha="center", va="center", fontsize=7)
+    ax.text((hg_off + rec_end) / 2, blue_y + bar_h / 2, "2 mM",
+            ha="center", va="center", fontsize=7, color="darkblue")
+
+    ax.text(x_lo + 5, 0.01, "Glucose", fontsize=7, color="gray", style="italic")
+
+
+def plot_individual_trace_subplots_v2(
+    axes: np.ndarray,
+    units_sr: List[np.ndarray],
+    cell_label: str,
+    low_alone_features: np.ndarray,
+    hg_combined_features: np.ndarray,
+    custom_labels: Optional[Dict[str, str]] = None,
+    step: int = 2,
+    pre_window_trials: int = 15,
+    blue_pre_points: int = 3,
+):
+    """Like plot_individual_trace_subplots but with a protocol diagram
+    (axes[0]) and *blue_pre_points* sampled data points before t=0 for
+    the blue trace.  axes must have 5 rows:
+    [diagram, red, blue, green, combined]."""
+
+    pre_s = pre_window_trials * TRIAL_INTERVAL_S
+
+    # -- 1. Treatment trace (red) --
+    tc = compute_population_timecourse(units_sr)
+    treat_mean = tc["mean"]
+    treat_sem = tc["sem"]
+    treat_arr = tc["arr"]
+    n_treat = tc["n_units"]
+    treat_x_rel = tc["x_s"] - LOW_GLUCOSE_S
+    treat_end_rel = treat_x_rel[-1]
+
+    red_start_trial = LOW_GLUCOSE_TRIAL_START - pre_window_trials
+    red_idx_all = np.arange(max(0, red_start_trial), len(treat_mean))
+    red_x = treat_x_rel[red_idx_all]
+    red_mean = treat_mean[red_idx_all]
+    red_sem = treat_sem[red_idx_all]
+
+    # -- 2. Low glucose alone trace (blue) with pre-t=0 points --
+    la_pop_mean = np.nanmean(low_alone_features, axis=0)
+    la_baseline = np.nanmean(la_pop_mean[:BASELINE_WINDOW])
+    if la_baseline > 0:
+        la_norm = low_alone_features / la_baseline
+    else:
+        la_norm = low_alone_features.copy()
+    n_valid_la = np.sum(~np.isnan(la_norm), axis=0)
+    la_mean_full = np.nanmean(la_norm, axis=0)
+    la_sem_full = np.nanstd(la_norm, axis=0) / np.sqrt(np.maximum(n_valid_la, 1))
+    n_la = la_norm.shape[0]
+
+    blue_pre_trials = blue_pre_points * step
+    blue_end_trial = min(la_norm.shape[1],
+                         int(treat_end_rel / TRIAL_INTERVAL_S) + 1)
+    blue_idx_all = np.arange(0, blue_end_trial)
+    blue_x = blue_idx_all * TRIAL_INTERVAL_S
+    blue_x_pre = np.arange(-blue_pre_trials, 0) * TRIAL_INTERVAL_S
+    n_total = la_norm.shape[1]
+    pre_src_start = max(0, n_total - blue_pre_trials)
+    pre_src_idx = np.arange(pre_src_start, n_total)
+    if len(pre_src_idx) < blue_pre_trials:
+        pre_src_idx = np.arange(max(0, blue_end_trial), min(n_total, blue_end_trial + blue_pre_trials))
+    blue_mean = la_mean_full[blue_idx_all]
+    blue_sem = la_sem_full[blue_idx_all]
+
+    # -- 3. HG-alone trace (green) --
+    n_units_hg, n_trials_hg = hg_combined_features.shape
+    baseline_start_hg = max(0, HG_ON_TRIAL - BASELINE_WINDOW)
+    hg_pop_raw = np.nanmean(hg_combined_features, axis=0)
+    hg_baseline = np.nanmean(hg_pop_raw[baseline_start_hg:HG_ON_TRIAL])
+    if hg_baseline > 0:
+        hg_arr = hg_combined_features / hg_baseline
+    else:
+        hg_arr = hg_combined_features.copy()
+    hg_mean_all = np.nanmean(hg_arr, axis=0)
+    hg_sem_all = np.nanstd(hg_arr, axis=0) / np.sqrt(
+        np.maximum(np.sum(~np.isnan(hg_arr), axis=0), 1))
+
+    green_start_trial = MAJORITY_HG_OFF_TRIAL - pre_window_trials
+    green_end_trial = min(n_trials_hg,
+                          MAJORITY_HG_OFF_TRIAL + int(treat_end_rel / TRIAL_INTERVAL_S) + 1)
+    green_idx_all = np.arange(max(0, green_start_trial), green_end_trial)
+    green_x = (green_idx_all - MAJORITY_HG_OFF_TRIAL) * TRIAL_INTERVAL_S
+    green_mean = hg_mean_all[green_idx_all]
+    green_sem = hg_sem_all[green_idx_all]
+
+    # -- Align blue/green to red at t=0 --
+    treat_val_t0 = treat_mean[LOW_GLUCOSE_TRIAL_START] if LOW_GLUCOSE_TRIAL_START < len(treat_mean) else 1.0
+
+    la_val_t0 = la_mean_full[0] if len(la_mean_full) > 0 else 1.0
+    la_scale = 1.0
+    if la_val_t0 > 0:
+        la_scale = treat_val_t0 / la_val_t0
+        blue_mean = blue_mean * la_scale
+        blue_sem = blue_sem * la_scale
+        la_norm = la_norm * la_scale
+        la_mean_full = la_mean_full * la_scale
+        la_sem_full = la_sem_full * la_scale
+
+    hg_val_t0 = hg_mean_all[MAJORITY_HG_OFF_TRIAL] if MAJORITY_HG_OFF_TRIAL < len(hg_mean_all) else 1.0
+    hg_scale = 1.0
+    if hg_val_t0 > 0:
+        hg_scale = treat_val_t0 / hg_val_t0
+        green_mean = green_mean * hg_scale
+        green_sem = green_sem * hg_scale
+        hg_arr = hg_arr * hg_scale
+
+    # Build pre-t=0 blue data from control portion of concatenated array
+    # The control recording ends around trial 82; use those last trials
+    ctrl_end = min(LA_SWITCH_TRIAL, la_norm.shape[1])
+    ctrl_start = max(0, ctrl_end - blue_pre_trials)
+    pre_idx = np.arange(ctrl_start, ctrl_end)
+    blue_pre_x = (pre_idx - ctrl_end) * TRIAL_INTERVAL_S
+    blue_pre_mean = la_mean_full[pre_idx]
+    blue_pre_sem = la_sem_full[pre_idx]
+
+    # Combine pre + post for blue
+    blue_x_full = np.concatenate([blue_pre_x, blue_x])
+    blue_mean_full_plot = np.concatenate([blue_pre_mean, blue_mean])
+    blue_sem_full_plot = np.concatenate([blue_pre_sem, blue_sem])
+
+    # -- Labels --
+    _cl = custom_labels or {}
+    lbl_red = _cl.get("red", f"High to low glucose (n={n_treat})")
+    lbl_blue = _cl.get("blue", f"Normal to low glucose (n={n_la})")
+    lbl_green = _cl.get("green", f"High to normal glucose (n={n_units_hg})")
+    lbl_red = lbl_red.replace("{n}", str(n_treat))
+    lbl_blue = lbl_blue.replace("{n}", str(n_la))
+    lbl_green = lbl_green.replace("{n}", str(n_units_hg))
+
+    x_lo = -pre_s - 10
+    x_hi = treat_end_rel + 10
+
+    # -- axes[0]: Protocol diagram --
+    _draw_protocol_diagram(axes[0], x_lo, x_hi)
+    axes[0].set_title(cell_label, fontsize=11, fontweight="bold")
+
+    def _shade_and_line(ax, pre_condition, post_condition):
+        if pre_condition == "high":
+            ax.axvspan(x_lo, 0, color="red", alpha=0.06, zorder=0)
+        if post_condition == "low":
+            ax.axvspan(0, x_hi, color="blue", alpha=0.06, zorder=0)
+        ax.axvline(0, color="gray", ls="--", lw=1, alpha=0.7)
+
+    def _format_ax(ax, show_xlabel=False):
+        ax.set_ylim(0.4, 1.1)
+        ax.set_xlim(x_lo, x_hi)
+        if show_xlabel:
+            ax.set_xlabel("Time relative to low glucose onset (s)", fontsize=10)
+        ax.set_ylabel("Norm. Resp.", fontsize=9)
+        ax.tick_params(labelsize=8)
+        ax.grid(True, alpha=0.15)
+        ax.legend(fontsize=8, loc="best", framealpha=0.8)
+
+    # -- axes[1]: Red trace alone --
+    ax1 = axes[1]
+    _shade_and_line(ax1, "high", "low")
+    r_idx = np.arange(0, len(red_mean), step)
+    ax1.errorbar(red_x[r_idx], red_mean[r_idx], yerr=red_sem[r_idx],
+                 fmt="o-", capsize=2, color="red", markersize=2, lw=1,
+                 label=lbl_red)
+    _format_ax(ax1)
+
+    # -- axes[2]: Blue trace alone (with pre-t=0 points) --
+    ax2 = axes[2]
+    _shade_and_line(ax2, "normal", "low")
+    b_idx = np.arange(0, len(blue_mean_full_plot), step)
+    ax2.errorbar(blue_x_full[b_idx], blue_mean_full_plot[b_idx],
+                 yerr=blue_sem_full_plot[b_idx],
+                 fmt="s-", capsize=2, color="blue", markersize=2, lw=1,
+                 label=lbl_blue)
+    _format_ax(ax2)
+
+    # -- axes[3]: Green trace alone --
+    ax3 = axes[3]
+    _shade_and_line(ax3, "high", "normal")
+    g_idx = np.arange(0, len(green_mean), step)
+    ax3.errorbar(green_x[g_idx], green_mean[g_idx], yerr=green_sem[g_idx],
+                 fmt="^-", capsize=2, color="green", markersize=2, lw=1,
+                 label=lbl_green)
+    _format_ax(ax3)
+
+    # -- axes[4]: Combined overlay with t-test --
+    ax4 = axes[4]
+    _shade_and_line(ax4, "high", "low")
+    ax4.errorbar(red_x[r_idx], red_mean[r_idx], yerr=red_sem[r_idx],
+                 fmt="o-", capsize=2, color="red", markersize=2, lw=1,
+                 label=lbl_red)
+    ax4.errorbar(blue_x_full[b_idx], blue_mean_full_plot[b_idx],
+                 yerr=blue_sem_full_plot[b_idx],
+                 fmt="s-", capsize=2, color="blue", markersize=2, lw=1,
+                 label=lbl_blue)
+    ax4.errorbar(green_x[g_idx], green_mean[g_idx], yerr=green_sem[g_idx],
+                 fmt="^-", capsize=2, color="green", markersize=2, lw=1,
+                 label=lbl_green)
+
+    n_treat_trials = treat_arr.shape[1]
+    for bi in b_idx:
+        t_rel = blue_x_full[bi]
+        if t_rel < 0:
+            continue
+        treat_trial = LOW_GLUCOSE_TRIAL_START + int(round(t_rel / TRIAL_INTERVAL_S))
+        post_idx = bi - len(blue_pre_x)
+        if post_idx < 0:
+            continue
+        la_trial = blue_idx_all[post_idx] if post_idx < len(blue_idx_all) else -1
+        if treat_trial >= n_treat_trials or la_trial < 0 or la_trial >= la_norm.shape[1]:
+            continue
+        t_vals = treat_arr[:, treat_trial]
+        la_col = la_norm[:, la_trial]
+        la_valid = la_col[~np.isnan(la_col)]
+        if len(la_valid) > 1 and len(t_vals) > 1:
+            _, p = ttest_ind(la_valid, t_vals, equal_var=False)
+            if p < 0.05:
+                y_star = blue_mean_full_plot[bi] + blue_sem_full_plot[bi] + 0.01
+                ax4.text(blue_x_full[bi], y_star, "*", ha="center", va="bottom",
+                         fontsize=8, color="blue", fontweight="bold")
+
+    for gi in g_idx:
+        t_rel = green_x[gi]
+        if t_rel < 0:
+            continue
+        treat_trial = LOW_GLUCOSE_TRIAL_START + int(round(t_rel / TRIAL_INTERVAL_S))
+        hg_trial = green_idx_all[gi]
+        if treat_trial >= n_treat_trials or hg_trial >= hg_arr.shape[1]:
+            continue
+        t_vals = treat_arr[:, treat_trial]
+        hg_col = hg_arr[:, hg_trial]
+        hg_valid = hg_col[~np.isnan(hg_col)]
+        if len(hg_valid) > 1 and len(t_vals) > 1:
+            _, p = ttest_ind(hg_valid, t_vals, equal_var=False)
+            if p < 0.05:
+                y_star = green_mean[gi] + green_sem[gi] + 0.01
+                ax4.text(green_x[gi], y_star, "*", ha="center", va="bottom",
+                         fontsize=8, color="green", fontweight="bold")
+
+    _format_ax(ax4, show_xlabel=True)
+
+
+# ---------------------------------------------------------------------------
 # Separate panels
 # ---------------------------------------------------------------------------
 
@@ -1603,6 +2109,40 @@ def make_separate_panels(
                               post_only=True, custom_labels=_post_labels)
     fig_t.tight_layout()
     _save_single_panel(fig_t, save_dir, "T_ON_low_glucose_only")
+
+    # --- Panels U / V: individual trace subplots with pre-t=0 baseline ---
+    logger.info("Generating individual trace subplot figures...")
+    fig_u, axes_u = plt.subplots(4, 1, figsize=(6, 12), sharex=True)
+    plot_individual_trace_subplots(axes_u, off_units, "OFF-Cell",
+                                    off_low_alone, hg_combined_off,
+                                    custom_labels=_post_labels)
+    fig_u.tight_layout()
+    _save_single_panel(fig_u, save_dir, "U_OFF_individual_traces")
+
+    fig_v, axes_v = plt.subplots(4, 1, figsize=(6, 12), sharex=True)
+    plot_individual_trace_subplots(axes_v, on_units, "ON-Cell",
+                                    on_low_alone, hg_combined_on,
+                                    custom_labels=_post_labels)
+    fig_v.tight_layout()
+    _save_single_panel(fig_v, save_dir, "V_ON_individual_traces")
+
+    # --- Panels U2 / V2: same as U/V but only 3 pre-t=0 data points ---
+    logger.info("Generating U2/V2 individual trace subplot figures...")
+    fig_u2, axes_u2 = plt.subplots(4, 1, figsize=(6, 12), sharex=True)
+    plot_individual_trace_subplots(axes_u2, off_units, "OFF-Cell",
+                                    off_low_alone, hg_combined_off,
+                                    custom_labels=_post_labels,
+                                    pre_window_trials=6)
+    fig_u2.tight_layout()
+    _save_single_panel(fig_u2, save_dir, "U2_OFF_individual_traces")
+
+    fig_v2, axes_v2 = plt.subplots(4, 1, figsize=(6, 12), sharex=True)
+    plot_individual_trace_subplots(axes_v2, on_units, "ON-Cell",
+                                    on_low_alone, hg_combined_on,
+                                    custom_labels=_post_labels,
+                                    pre_window_trials=6)
+    fig_v2.tight_layout()
+    _save_single_panel(fig_v2, save_dir, "V2_ON_individual_traces")
 
     logger.info("All separate panels done.")
 

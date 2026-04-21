@@ -44,7 +44,7 @@ EXPERIMENTS: Dict[str, ExperimentProfile] = {
     "_ptx_str": ExperimentProfile(
         postfix="_ptx_str",
         date_start="2025.09.04",
-        date_end="2025.09.19",
+        date_end="2026.02.25",
         subfolder_before="before_gaba_gly",
         subfolder_after="gaba_gly",
         data_folder_pattern="{date_compact}_gaba_gly",
@@ -54,25 +54,25 @@ EXPERIMENTS: Dict[str, ExperimentProfile] = {
     ),
     "_ptx": ExperimentProfile(
         postfix="_ptx",
-        date_start="2025.11.06",            # <-- fill in
-        date_end="2025.11.25",              # <-- fill in
-        subfolder_before="before_gaba",      # <-- fill in
-        subfolder_after="gaba",       # <-- fill in
-        data_folder_pattern="{date_compact}_gaba",   # <-- fill in e.g. "{date_compact}_ptx"
+        date_start="2025.11.06",
+        date_end="2026.02.05",
+        subfolder_before="before_gaba",
+        subfolder_after="gaba",
+        data_folder_pattern="{date_compact}_gaba",
         before_condition="play_optimization_set6_a_ipRGC_without_step",
         after_condition="play_optimization_set6_a_ipRGC_manual",
-        label_root=f"{_LABEL_BASE}/gaba_gly_blocker",  # <-- fill in subfolder name
+        label_root=f"{_LABEL_BASE}/gaba_gly_blocker",
     ),
     "_str": ExperimentProfile(
         postfix="_str",
-        date_start="2025.12.02",            # <-- fill in
-        date_end="2025.12.12",              # <-- fill in
-        subfolder_before="before_gly",      # <-- fill in
-        subfolder_after="gly",       # <-- fill in
-        data_folder_pattern="{date_compact}_gly",   # <-- fill in e.g. "{date_compact}_ptx"
+        date_start="2025.12.02",
+        date_end="2025.12.19",
+        subfolder_before="before_gly",
+        subfolder_after="gly",
+        data_folder_pattern="{date_compact}_gly",
         before_condition="play_optimization_set6_a_ipRGC_without_step",
         after_condition="play_optimization_set6_a_ipRGC_manual",
-        label_root=f"{_LABEL_BASE}/gaba_gly_blocker",  # <-- fill in subfolder name
+        label_root=f"{_LABEL_BASE}/gaba_gly_blocker",
     ),
 }
 

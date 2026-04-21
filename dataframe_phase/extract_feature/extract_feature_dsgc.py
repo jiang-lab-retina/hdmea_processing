@@ -339,6 +339,7 @@ def process_unit(
         "dsi": np.nan,
         "osi": np.nan,
         "preferred_direction": np.nan,
+        "preferred_orientation": np.nan,
         "ds_p_value": np.nan,
         "os_p_value": np.nan,
     }
@@ -375,15 +376,16 @@ def process_unit(
     
     # Step 3: Calculate DSI and OSI
     dsi, _, preferred_angle = calculate_direction_index(directions, mean_per_direction)
-    osi, _, _ = calculate_orientation_index(directions, mean_per_direction)
+    osi, _, preferred_ori_angle = calculate_orientation_index(directions, mean_per_direction)
     
     if dsi is None or osi is None:
         return result
     
     result["dsi"] = dsi
     result["osi"] = osi
-    # Convert preferred_direction to 0-360 range
     result["preferred_direction"] = preferred_angle % 360 if preferred_angle is not None else np.nan
+    # OSI uses doubled angles; halve back to 0-180 range for orientation axis
+    result["preferred_orientation"] = (preferred_ori_angle / 2) % 180 if preferred_ori_angle is not None else np.nan
     
     # Step 4: Permutation test for p-values
     # Flatten all trial values: (n_trials, n_directions) for shuffling

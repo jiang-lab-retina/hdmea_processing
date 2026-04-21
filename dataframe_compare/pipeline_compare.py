@@ -645,18 +645,19 @@ def extract_all_features(
                 results.append({
                     "dsi": np.nan, "osi": np.nan,
                     "preferred_direction": np.nan,
+                    "preferred_orientation": np.nan,
                     "ds_p_value": np.nan, "os_p_value": np.nan,
                 })
             else:
                 result = process_unit(row, directions, CORRECTED_DIRECTION_COLUMNS, N_PERMUTATIONS, N_TRIALS)
                 results.append(result)
         results_df = pd.DataFrame(results, index=df.index)
-        for col in ["dsi", "osi", "preferred_direction", "ds_p_value", "os_p_value"]:
+        for col in ["dsi", "osi", "preferred_direction", "preferred_orientation", "ds_p_value", "os_p_value"]:
             df[col] = results_df[col]
         valid_dsi = df["dsi"].notna().sum()
         print(f"    DSI/OSI: {valid_dsi} valid")
     else:
-        for col in ["dsi", "osi", "preferred_direction", "ds_p_value", "os_p_value"]:
+        for col in ["dsi", "osi", "preferred_direction", "preferred_orientation", "ds_p_value", "os_p_value"]:
             df[col] = np.nan
         print(f"    DSI/OSI: SKIPPED (no direction columns)")
 
